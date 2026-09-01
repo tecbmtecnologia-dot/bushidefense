@@ -5218,7 +5218,7 @@ function AlunoDashboard({ data, save, aluno, onSair }) {
 
           {(data.academia.instagram || data.academia.facebook || data.academia.whatsapp) && (
             <Card style={{ marginBottom: 14, background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}>
-              <div style={{ ...blockTitleStyle, color: "#F5F3EC" }}>Instagram Cia Paulista Brasil</div>
+              <div style={{ ...blockTitleStyle, color: "#F5F3EC" }}>Contatos Cia Paulista</div>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                 {data.academia.instagram && <a href={data.academia.instagram} target="_blank" rel="noreferrer" style={{ fontSize: 13, fontWeight: 600, color: "#C9A227" }}>Instagram</a>}
                 {data.academia.facebook && <a href={data.academia.facebook} target="_blank" rel="noreferrer" style={{ fontSize: 13, fontWeight: 600, color: "#C9A227" }}>Facebook</a>}
