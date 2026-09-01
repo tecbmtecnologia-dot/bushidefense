@@ -3587,6 +3587,24 @@ function ProdutosAluno({ produtos }) {
   );
 }
 
+function RegrasTatameAluno({ imagem }) {
+  const [aberto, setAberto] = useState(false);
+  if (!imagem) return null;
+  return (
+    <Card style={{ marginBottom: 14, background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}>
+      <button onClick={() => setAberto((v) => !v)} style={{ width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ ...blockTitleStyle, color: "#FFFFFF" }}>📜 Regras do tatame</span>
+        <span style={{ fontSize: 18, color: "#C9A227" }}>{aberto ? "−" : "+"}</span>
+      </button>
+      {aberto && (
+        <div style={{ marginTop: 10 }}>
+          <img src={imagem} alt="Regras do tatame" style={{ width: "100%", borderRadius: 10, display: "block" }} />
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function UnidadeForm({ initial, onSave, onCancel }) {
   const i = initial || {};
   const [nome, setNome] = useState(i.nome || "");
@@ -3701,11 +3719,14 @@ function ConfiguracoesAdmin({ data, save }) {
   const [facebook, setFacebook] = useState(data.academia.facebook || "");
   const [whatsapp, setWhatsapp] = useState(data.academia.whatsapp || "");
   const [mensagemAniversario, setMensagemAniversario] = useState(data.academia.mensagemAniversario || "");
+  const [regrasTatame, setRegrasTatame] = useState(data.academia.regrasTatame || null);
   const logoRef = useRef(null);
   const pdfRef = useRef(null);
+  const regrasRef = useRef(null);
 
   const onLogo = (e) => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => setLogo(r.result); r.readAsDataURL(f); };
   const onPdf = (e) => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => { setTermoPdf(r.result); setTermoPdfNome(f.name); }; r.readAsDataURL(f); };
+  const onRegras = (e) => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => setRegrasTatame(r.result); r.readAsDataURL(f); };
   const usarLocalizacaoAtual = () => {
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition((pos) => {
@@ -3719,7 +3740,7 @@ function ConfiguracoesAdmin({ data, save }) {
       academia: {
         ...data.academia, nome, chavePix, termoPadrao: termo, logo, termoPdf, termoPdfNome, senhaAdmin,
         endereco, latitude: latitude === "" ? null : Number(latitude), longitude: longitude === "" ? null : Number(longitude),
-        raioCheckin: Number(raioCheckin) || 150, instagram, facebook, whatsapp, mensagemAniversario,
+        raioCheckin: Number(raioCheckin) || 150, instagram, facebook, whatsapp, mensagemAniversario, regrasTatame,
       },
     });
   };
@@ -3760,6 +3781,15 @@ function ConfiguracoesAdmin({ data, save }) {
             <input ref={pdfRef} type="file" accept="application/pdf" hidden onChange={onPdf} />
             {termoPdfNome && <span style={{ fontSize: 12.5, color: "#9B9891" }}>{termoPdfNome}</span>}
           </div>
+        </Field>
+        <Field label="Regras do tatame (imagem, opcional)" labelColor="#9B9891">
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            {regrasTatame && <img src={regrasTatame} alt="regras do tatame" style={{ width: 56, height: 56, borderRadius: 10, objectFit: "cover", border: "1px solid rgba(255,255,255,0.14)" }} />}
+            <Button variant="ghost" icon={Camera} onClick={() => regrasRef.current?.click()} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>{regrasTatame ? "Trocar imagem" : "Enviar imagem"}</Button>
+            {regrasTatame && <Button variant="ghost" icon={X} onClick={() => setRegrasTatame(null)} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>Remover</Button>}
+            <input ref={regrasRef} type="file" accept="image/*" hidden onChange={onRegras} />
+          </div>
+          <p style={{ fontSize: 11.5, color: "#9B9891", marginTop: 4 }}>Se preenchida, aparece no app do aluno, na aba "Mais", em um card "Regras do tatame" que ele pode expandir.</p>
         </Field>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
           <Field label="Instagram" labelColor="#9B9891"><input style={inputStyle} value={instagram} onChange={(e) => setInstagram(e.target.value)} placeholder="https://instagram.com/..." /></Field>
@@ -5215,6 +5245,8 @@ function AlunoDashboard({ data, save, aluno, onSair }) {
           <VideosAluno videos={(data.videos || []).filter((v) => !v.professorId || v.professorId === aluno.professorId)} />
 
           <ProdutosAluno produtos={(data.produtos || []).filter((p) => p.professorId === aluno.professorId && p.ativo !== false)} />
+
+          <RegrasTatameAluno imagem={data.academia.regrasTatame} />
 
           {(data.academia.instagram || data.academia.facebook || data.academia.whatsapp) && (
             <Card style={{ marginBottom: 14, background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}>
