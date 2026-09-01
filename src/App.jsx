@@ -2285,6 +2285,7 @@ function estiloRelatorioModerno() {
     * { box-sizing: border-box; }
     body{font-family:'Segoe UI',Arial,Helvetica,sans-serif;color:#1B2027;margin:0;padding:14mm;background:#fff;}
     .marca-dagua{position:fixed;bottom:8mm;right:-10mm;width:280px;opacity:0.05;pointer-events:none;z-index:0;}
+    .marca-dagua-grande{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:160mm;opacity:0.08;filter:invert(1);pointer-events:none;z-index:0;}
     .cabecalho{position:relative;display:flex;align-items:center;gap:14px;padding-bottom:14px;margin-bottom:6px;}
     .cabecalho::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:linear-gradient(90deg,#C9A227,#F5D67D 50%,#C9A227);border-radius:2px;}
     .cabecalho img.logo{width:52px;height:52px;object-fit:contain;flex-shrink:0;border-radius:50%;}
@@ -2333,6 +2334,7 @@ function rodapeRelatorioModerno() {
 }
 
 function marcaDaguaRelatorio(data) {
+  if (data.academia.marcaDagua) return `<img class="marca-dagua-grande" src="${data.academia.marcaDagua}" alt="" />`;
   return data.academia.logo ? `<img class="marca-dagua" src="${data.academia.logo}" alt="" />` : "";
 }
 
@@ -3866,13 +3868,16 @@ function ConfiguracoesAdmin({ data, save }) {
   const [whatsapp, setWhatsapp] = useState(data.academia.whatsapp || "");
   const [mensagemAniversario, setMensagemAniversario] = useState(data.academia.mensagemAniversario || "");
   const [regrasTatame, setRegrasTatame] = useState(data.academia.regrasTatame || null);
+  const [marcaDagua, setMarcaDagua] = useState(data.academia.marcaDagua || null);
   const logoRef = useRef(null);
   const pdfRef = useRef(null);
   const regrasRef = useRef(null);
+  const marcaDaguaRef = useRef(null);
 
   const onLogo = (e) => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => setLogo(r.result); r.readAsDataURL(f); };
   const onPdf = (e) => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => { setTermoPdf(r.result); setTermoPdfNome(f.name); }; r.readAsDataURL(f); };
   const onRegras = (e) => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => setRegrasTatame(r.result); r.readAsDataURL(f); };
+  const onMarcaDagua = (e) => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => setMarcaDagua(r.result); r.readAsDataURL(f); };
   const usarLocalizacaoAtual = () => {
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition((pos) => {
@@ -3886,7 +3891,7 @@ function ConfiguracoesAdmin({ data, save }) {
       academia: {
         ...data.academia, nome, chavePix, termoPadrao: termo, logo, termoPdf, termoPdfNome, senhaAdmin,
         endereco, latitude: latitude === "" ? null : Number(latitude), longitude: longitude === "" ? null : Number(longitude),
-        raioCheckin: Number(raioCheckin) || 150, instagram, facebook, whatsapp, mensagemAniversario, regrasTatame,
+        raioCheckin: Number(raioCheckin) || 150, instagram, facebook, whatsapp, mensagemAniversario, regrasTatame, marcaDagua,
       },
     });
   };
@@ -3936,6 +3941,15 @@ function ConfiguracoesAdmin({ data, save }) {
             <input ref={regrasRef} type="file" accept="image/*" hidden onChange={onRegras} />
           </div>
           <p style={{ fontSize: 11.5, color: "#9B9891", marginTop: 4 }}>Se preenchida, aparece no app do aluno, na aba "Mais", em um card "Regras do tatame" que ele pode expandir.</p>
+        </Field>
+        <Field label="Marca d'água dos relatórios em PDF (imagem, opcional)" labelColor="#9B9891">
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            {marcaDagua && <img src={marcaDagua} alt="marca d'água" style={{ width: 56, height: 56, borderRadius: 10, objectFit: "cover", border: "1px solid rgba(255,255,255,0.14)", background: "#333" }} />}
+            <Button variant="ghost" icon={Camera} onClick={() => marcaDaguaRef.current?.click()} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>{marcaDagua ? "Trocar imagem" : "Enviar imagem"}</Button>
+            {marcaDagua && <Button variant="ghost" icon={X} onClick={() => setMarcaDagua(null)} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>Remover</Button>}
+            <input ref={marcaDaguaRef} type="file" accept="image/*" hidden onChange={onMarcaDagua} />
+          </div>
+          <p style={{ fontSize: 11.5, color: "#9B9891", marginTop: 4 }}>Aparece grande, no centro, bem clarinha, atrás do conteúdo de todo relatório em PDF. Funciona melhor com uma imagem clara/transparente (tipo um desenho de linha) — ela é invertida automaticamente pra ficar visível no papel branco. Se não enviar nada aqui, usamos o "Logo da equipe" pequeno no canto, como já era antes.</p>
         </Field>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
           <Field label="Instagram" labelColor="#9B9891"><input style={inputStyle} value={instagram} onChange={(e) => setInstagram(e.target.value)} placeholder="https://instagram.com/..." /></Field>

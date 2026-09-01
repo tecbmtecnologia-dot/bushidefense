@@ -7,7 +7,7 @@ const MAPS = {
     termoPdf: "termo_pdf", termoPdfNome: "termo_pdf_nome", senhaAdmin: "senha_admin",
     endereco: "endereco", latitude: "latitude", longitude: "longitude", raioCheckin: "raio_checkin",
     instagram: "instagram", facebook: "facebook", whatsapp: "whatsapp",
-    mensagemAniversario: "mensagem_aniversario", regrasTatame: "regras_tatame",
+    mensagemAniversario: "mensagem_aniversario", regrasTatame: "regras_tatame", marcaDagua: "marca_dagua",
   },
   faixas: {
     id: "id", nome: "nome", cor: "cor", texto: "texto", borda: "borda", corPonta: "cor_ponta",
