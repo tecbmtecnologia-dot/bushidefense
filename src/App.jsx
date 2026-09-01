@@ -1336,6 +1336,12 @@ function RelatoriosAdmin({ data }) {
             onClick={() => { setErro(""); gerarRelatorioListaAlunos(data, setErro); }} />
         )}
 
+        {visivel("alunos", "Total de alunos por unidade") && (
+          <CartaoRelatorio corIcone="#EAF2FF" icone="🏢" tag="Alunos" titulo="Total de alunos por unidade"
+            descricao="Total geral de todas as unidades, mais o total individual de cada uma."
+            onClick={() => { setErro(""); gerarRelatorioAlunosPorUnidade(data, setErro); }} />
+        )}
+
         {visivel("alunos", "Frequência de alunos") && (
           <CartaoRelatorio corIcone="#FFF3E0" icone="🏆" tag="Alunos" titulo="Frequência de alunos"
             descricao="Ranking de quem mais e menos treina — ajuda a identificar quem pode estar se afastando."
@@ -2560,6 +2566,42 @@ function gerarRelatorioDesativados(data, onErro, alunosFiltro, tituloExtra) {
         <div class="stat"><div class="label">Total desativados</div><div class="value">${desativados.length}</div></div>
       </div>
       <table><thead><tr><th>Aluno</th><th>Faixa</th><th>Telefone</th><th>Professor</th></tr></thead><tbody>${linhas}</tbody></table>
+      ${rodapeRelatorioModerno()}
+    </body></html>`;
+
+  abrirJanelaRelatorio(html, onErro);
+}
+
+function gerarRelatorioAlunosPorUnidade(data, onErro) {
+  const grupos = {};
+  data.alunos.forEach((a) => {
+    const unidade = (data.unidades || []).find((u) => u.id === a.unidadeId);
+    const nomeUnidade = unidade ? unidade.nome : "QG (padrão)";
+    if (!grupos[nomeUnidade]) grupos[nomeUnidade] = { total: 0, ativos: 0, inativos: 0 };
+    grupos[nomeUnidade].total += 1;
+    if (a.ativo === false) grupos[nomeUnidade].inativos += 1; else grupos[nomeUnidade].ativos += 1;
+  });
+  const linhas = Object.entries(grupos)
+    .sort((a, b) => b[1].total - a[1].total)
+    .map(([nome, g]) => `<tr>
+      <td>${nome}</td>
+      <td style="text-align:right;font-weight:bold;">${g.total}</td>
+      <td style="text-align:right;">${g.ativos}</td>
+      <td style="text-align:right;">${g.inativos}</td>
+    </tr>`)
+    .join("") || `<tr><td colspan="4">Nenhum aluno cadastrado.</td></tr>`;
+
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Total de alunos por unidade</title>
+    <style>${estiloRelatorioModerno()}</style></head>
+    <body>
+      ${marcaDaguaRelatorio(data)}
+      <button class="voltar-btn" onclick="window.close()">← Voltar para o app</button>
+      ${cabecalhoRelatorioModerno(data, "Total de alunos por unidade")}
+      <div class="stats">
+        <div class="stat"><div class="label">Total geral (todas as unidades)</div><div class="value">${data.alunos.length}</div></div>
+        <div class="stat"><div class="label">Unidades com aluno</div><div class="value">${Object.keys(grupos).length}</div></div>
+      </div>
+      <table><thead><tr><th>Unidade</th><th style="text-align:right;">Total</th><th style="text-align:right;">Ativos</th><th style="text-align:right;">Inativos</th></tr></thead><tbody>${linhas}</tbody></table>
       ${rodapeRelatorioModerno()}
     </body></html>`;
 
