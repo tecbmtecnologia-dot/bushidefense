@@ -1864,8 +1864,9 @@ function PersonForm({ tipo, initial, planos, faixas, professores, unidades, turm
             <Field label="Peso (kg)"><input type="number" min="0" step="0.1" style={inputStyle} value={peso} onChange={(e) => setPeso(e.target.value)} /></Field>
             <Field label="Plano">
               <select style={inputStyle} value={planoId} onChange={(e) => setPlanoId(e.target.value)}>
-                {(planos || []).map((p) => <option key={p.id} value={p.id}>{p.nome} — R$ {p.valor}</option>)}
+                {(planos || []).filter((p) => !p.unidadeId || p.unidadeId === unidadeId).map((p) => <option key={p.id} value={p.id}>{p.nome} — R$ {p.valor}</option>)}
               </select>
+              <p style={{ fontSize: 11, color: "#8A8574", marginTop: 4 }}>Mostrando planos da unidade selecionada abaixo, mais os que valem pra todas.</p>
             </Field>
             <Field label="Dia de vencimento (1-31)"><input type="number" min="1" max="31" style={inputStyle} value={diaVencimento} onChange={(e) => setDiaVencimento(e.target.value)} /></Field>
             <Field label="Professor responsável">
@@ -2057,19 +2058,26 @@ function GraduacaoAdmin({ data, save }) {
   );
 }
 
-function PlanoForm({ onSave, onCancel }) {
+function PlanoForm({ unidades, onSave, onCancel }) {
   const [nome, setNome] = useState("");
   const [valor, setValor] = useState("");
   const [periodicidade, setPeriodicidade] = useState("mensal");
-  const submit = () => { if (!nome.trim()) return; onSave({ nome, valor: Number(valor) || 0, periodicidade }); };
+  const [unidadeId, setUnidadeId] = useState("");
+  const submit = () => { if (!nome.trim()) return; onSave({ nome, valor: Number(valor) || 0, periodicidade, unidadeId }); };
   return (
     <Card style={{ marginBottom: 12 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10 }}>
         <Field label="Nome do plano"><input style={inputStyle} value={nome} onChange={(e) => setNome(e.target.value)} /></Field>
         <Field label="Valor (R$)"><input type="number" min="0" style={inputStyle} value={valor} onChange={(e) => setValor(e.target.value)} /></Field>
         <Field label="Periodicidade">
           <select style={inputStyle} value={periodicidade} onChange={(e) => setPeriodicidade(e.target.value)}>
             <option value="mensal">Mensal</option><option value="trimestral">Trimestral</option><option value="semestral">Semestral</option><option value="anual">Anual</option>
+          </select>
+        </Field>
+        <Field label="Unidade">
+          <select style={inputStyle} value={unidadeId} onChange={(e) => setUnidadeId(e.target.value)}>
+            <option value="">Todas as unidades</option>
+            {(unidades || []).map((u) => <option key={u.id} value={u.id}>{u.nome}</option>)}
           </select>
         </Field>
       </div>
@@ -2094,21 +2102,27 @@ function PlanosAdmin({ data, save }) {
   const adicionar = async (form) => { const p = { id: uid(), ...form }; await save({ ...data, planos: [...data.planos, p] }); setNovo(false); };
   return (
     <div>
-      <p style={{ fontSize: 12.5, color: "#9B9891", marginTop: 0 }}>O status "em dia / pendente" de cada aluno é calculado automaticamente comparando a data do último pagamento e o dia de vencimento com a periodicidade do plano.</p>
+      <p style={{ fontSize: 12.5, color: "#9B9891", marginTop: 0 }}>O status "em dia / pendente" de cada aluno é calculado automaticamente comparando a data do último pagamento e o dia de vencimento com a periodicidade do plano. Vincule um plano a uma unidade quando o valor for diferente por local — planos sem unidade ficam disponíveis pra todas.</p>
       {aviso && <div style={{ fontSize: 12.5, color: "#FF8A80", fontWeight: 600, marginBottom: 10 }}>{aviso}</div>}
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
         <Button icon={Plus} onClick={() => setNovo(true)}>Novo plano</Button>
       </div>
-      {novo && <PlanoForm onCancel={() => setNovo(false)} onSave={adicionar} />}
+      {novo && <PlanoForm unidades={data.unidades} onCancel={() => setNovo(false)} onSave={adicionar} />}
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {data.planos.map((p) => (
           <Card dark key={p.id} style={{ padding: 12 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr auto", gap: 10, alignItems: "end" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1.4fr auto", gap: 10, alignItems: "end" }}>
               <Field label="Nome" labelColor="#9B9891"><input style={inputStyle} value={p.nome} onChange={(e) => atualizar(p.id, "nome", e.target.value)} /></Field>
               <Field label="Valor (R$)" labelColor="#9B9891"><input type="number" style={inputStyle} value={p.valor} onChange={(e) => atualizar(p.id, "valor", Number(e.target.value))} /></Field>
               <Field label="Periodicidade" labelColor="#9B9891">
                 <select style={inputStyle} value={p.periodicidade} onChange={(e) => atualizar(p.id, "periodicidade", e.target.value)}>
                   <option value="mensal">Mensal</option><option value="trimestral">Trimestral</option><option value="semestral">Semestral</option><option value="anual">Anual</option>
+                </select>
+              </Field>
+              <Field label="Unidade" labelColor="#9B9891">
+                <select style={inputStyle} value={p.unidadeId || ""} onChange={(e) => atualizar(p.id, "unidadeId", e.target.value)}>
+                  <option value="">Todas as unidades</option>
+                  {(data.unidades || []).map((u) => <option key={u.id} value={u.id}>{u.nome}</option>)}
                 </select>
               </Field>
               <ConfirmDelete onConfirm={() => remover(p.id)} />

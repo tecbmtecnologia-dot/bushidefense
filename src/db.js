@@ -14,7 +14,7 @@ const MAPS = {
     grausMax: "graus_max", tempoMinimoAnos: "tempo_minimo_anos", aulasPorGrau: "aulas_por_grau",
     categoria: "categoria", observacoes: "observacoes", ordem: "ordem",
   },
-  planos: { id: "id", nome: "nome", valor: "valor", periodicidade: "periodicidade" },
+  planos: { id: "id", nome: "nome", valor: "valor", periodicidade: "periodicidade", unidadeId: "unidade_id" },
   turmas: { id: "id", nome: "nome", dias: "dias", horario: "horario", horarioFim: "horario_fim", unidadeId: "unidade_id" },
   professores: {
     id: "id", nome: "nome", email: "email", especialidade: "especialidade",
@@ -48,6 +48,7 @@ function toDb(entity, obj) {
   for (const [jsKey, dbKey] of Object.entries(map)) {
     const valor = obj[jsKey];
     const vazio = valor === "" && ["email", "faixaId", "planoId", "professorId", "dataNascimento", "unidadeId", "turmaId"].includes(jsKey);
+    // "planos" também usa unidadeId como vínculo opcional (plano vale pra unidade específica ou pra todas se vazio).
     row[dbKey] = valor === undefined || vazio ? null : valor;
   }
   return row;
