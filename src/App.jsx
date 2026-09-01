@@ -2585,9 +2585,10 @@ function gerarRelatorioAlunosPorUnidade(data, onErro) {
   data.alunos.forEach((a) => {
     const unidade = (data.unidades || []).find((u) => u.id === a.unidadeId);
     const nomeUnidade = unidade ? unidade.nome : "QG (padrão)";
-    if (!grupos[nomeUnidade]) grupos[nomeUnidade] = { total: 0, ativos: 0, inativos: 0 };
+    if (!grupos[nomeUnidade]) grupos[nomeUnidade] = { total: 0, ativos: 0, inativos: 0, alunos: [] };
     grupos[nomeUnidade].total += 1;
     if (a.ativo === false) grupos[nomeUnidade].inativos += 1; else grupos[nomeUnidade].ativos += 1;
+    grupos[nomeUnidade].alunos.push(a);
   });
   const listaUnidades = Object.entries(grupos).sort((a, b) => b[1].total - a[1].total);
   const porUnidadePizza = listaUnidades.map(([nome, g], i) => ({ nome, valor: g.total, cor: CORES_UNIDADES[i % CORES_UNIDADES.length] }));
@@ -2609,9 +2610,20 @@ function gerarRelatorioAlunosPorUnidade(data, onErro) {
        <div class="grafico-faixas">${svgPizza(porUnidadePizza)}${legendaPizzaHtml(porUnidadePizza)}</div>`
     : "";
   const graficoFaixaHtml = porFaixa.length
-    ? `<div class="section-title">Alunos por faixa</div>
+    ? `<div class="section-title">Alunos por faixa (todas as unidades)</div>
        <div class="grafico-faixas">${svgPizza(porFaixa)}${legendaPizzaHtml(porFaixa)}</div>`
     : "";
+
+  const graficosFaixaPorUnidadeHtml = listaUnidades
+    .map(([nome, g]) => {
+      const porFaixaDaUnidade = data.faixas
+        .map((f) => ({ nome: f.nome, cor: f.cor, valor: g.alunos.filter((a) => a.faixaId === f.id).length }))
+        .filter((f) => f.valor > 0);
+      if (!porFaixaDaUnidade.length) return "";
+      return `<div class="section-title">Alunos por faixa — ${nome}</div>
+        <div class="grafico-faixas">${svgPizza(porFaixaDaUnidade)}${legendaPizzaHtml(porFaixaDaUnidade)}</div>`;
+    })
+    .join("");
 
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>Total de alunos por unidade</title>
     <style>${estiloRelatorioModerno()}</style></head>
@@ -2627,6 +2639,7 @@ function gerarRelatorioAlunosPorUnidade(data, onErro) {
       <div class="section-title">Detalhamento por unidade</div>
       <table><thead><tr><th>Unidade</th><th style="text-align:right;">Total</th><th style="text-align:right;">Ativos</th><th style="text-align:right;">Inativos</th></tr></thead><tbody>${linhas}</tbody></table>
       ${graficoFaixaHtml}
+      ${graficosFaixaPorUnidadeHtml}
       ${rodapeRelatorioModerno()}
     </body></html>`;
 
