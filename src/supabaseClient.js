@@ -1,5 +1,9 @@
-const SUPABASE_URL = "https://bzcvckrlettgnauvcmaz.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ6Y3Zja3JsZXR0Z25hdXZjbWF6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYzODg4ODEsImV4cCI6MjEwMTk2NDg4MX0.QzUohc8ykAehZgRHTqFkM38HIBQemtd9godKDpVikCc";
+// Cada academia (deploy) pode ter seu próprio Supabase, configurado via variáveis de
+// ambiente (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY) no Netlify. Sem essa configuração
+// (ex: build local sem .env), cai no banco padrão da Cia Paulista — mantém tudo funcionando
+// como já funcionava antes, sem precisar mexer em nada pro deploy atual.
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://bzcvckrlettgnauvcmaz.supabase.co";
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ6Y3Zja3JsZXR0Z25hdXZjbWF6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYzODg4ODEsImV4cCI6MjEwMTk2NDg4MX0.QzUohc8ykAehZgRHTqFkM38HIBQemtd9godKDpVikCc";
 
 export const SUPABASE_ANON_KEY_EXPORT = SUPABASE_ANON_KEY;
 export const SUPABASE_URL_EXPORT = SUPABASE_URL;

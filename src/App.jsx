@@ -2299,7 +2299,7 @@ function estiloRelatorioModerno() {
 function cabecalhoRelatorioModerno(data, titulo, subtitulo) {
   return `
     <div class="cabecalho">
-      <img class="logo" src="${LOGO_CIRCULAR}" alt="" />
+      <img class="logo" src="${data.academia.logo || LOGO_CIRCULAR}" alt="" />
       <div class="titulos">
         <h1>${data.academia.nome}</h1>
         <h2>${titulo}${subtitulo ? " — " + subtitulo : ""}</h2>
@@ -3793,7 +3793,7 @@ function LoginPreto({ logo, titulo, subtitulo, children }) {
       padding: "40px 20px",
     }}>
       <div style={{ maxWidth: 380, width: "100%", textAlign: "center" }}>
-        <img src={LOGO_CIRCULAR} alt="" style={{ width: 130, height: 130, objectFit: "contain", marginBottom: 18 }} />
+        <img src={logo || LOGO_CIRCULAR} alt="" style={{ width: 130, height: 130, objectFit: "contain", marginBottom: 18, borderRadius: "50%" }} />
         <div style={{ fontFamily: "Oswald", fontWeight: 700, fontSize: 18, color: "#FFFFFF", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>{titulo}</div>
         {subtitulo && <div style={{ fontSize: 12.5, color: "#8F97A8", marginBottom: 20 }}>{subtitulo}</div>}
         <div style={{ textAlign: "left" }}>{children}</div>
