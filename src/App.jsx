@@ -2572,6 +2572,14 @@ function gerarRelatorioDesativados(data, onErro, alunosFiltro, tituloExtra) {
   abrirJanelaRelatorio(html, onErro);
 }
 
+const CORES_UNIDADES = ["#C9A227", "#1B4F9C", "#2E7D46", "#8E44AD", "#D9534F", "#17A2B8", "#E67E22", "#6C757D", "#B5179E", "#118AB2"];
+
+function legendaPizzaHtml(itens) {
+  return `<div class="legenda-pizza">${itens
+    .map((it) => `<div class="legenda-item"><span class="legenda-cor" style="background:${it.cor};border:1px solid rgba(0,0,0,0.15);"></span>${it.nome}: <span class="legenda-valor">${it.valor}</span></div>`)
+    .join("")}</div>`;
+}
+
 function gerarRelatorioAlunosPorUnidade(data, onErro) {
   const grupos = {};
   data.alunos.forEach((a) => {
@@ -2581,8 +2589,9 @@ function gerarRelatorioAlunosPorUnidade(data, onErro) {
     grupos[nomeUnidade].total += 1;
     if (a.ativo === false) grupos[nomeUnidade].inativos += 1; else grupos[nomeUnidade].ativos += 1;
   });
-  const linhas = Object.entries(grupos)
-    .sort((a, b) => b[1].total - a[1].total)
+  const listaUnidades = Object.entries(grupos).sort((a, b) => b[1].total - a[1].total);
+  const porUnidadePizza = listaUnidades.map(([nome, g], i) => ({ nome, valor: g.total, cor: CORES_UNIDADES[i % CORES_UNIDADES.length] }));
+  const linhas = listaUnidades
     .map(([nome, g]) => `<tr>
       <td>${nome}</td>
       <td style="text-align:right;font-weight:bold;">${g.total}</td>
@@ -2590,6 +2599,19 @@ function gerarRelatorioAlunosPorUnidade(data, onErro) {
       <td style="text-align:right;">${g.inativos}</td>
     </tr>`)
     .join("") || `<tr><td colspan="4">Nenhum aluno cadastrado.</td></tr>`;
+
+  const porFaixa = data.faixas
+    .map((f) => ({ nome: f.nome, cor: f.cor, valor: data.alunos.filter((a) => a.faixaId === f.id).length }))
+    .filter((f) => f.valor > 0);
+
+  const graficoUnidadeHtml = porUnidadePizza.length
+    ? `<div class="section-title">Alunos por unidade</div>
+       <div class="grafico-faixas">${svgPizza(porUnidadePizza)}${legendaPizzaHtml(porUnidadePizza)}</div>`
+    : "";
+  const graficoFaixaHtml = porFaixa.length
+    ? `<div class="section-title">Alunos por faixa</div>
+       <div class="grafico-faixas">${svgPizza(porFaixa)}${legendaPizzaHtml(porFaixa)}</div>`
+    : "";
 
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>Total de alunos por unidade</title>
     <style>${estiloRelatorioModerno()}</style></head>
@@ -2601,7 +2623,10 @@ function gerarRelatorioAlunosPorUnidade(data, onErro) {
         <div class="stat"><div class="label">Total geral (todas as unidades)</div><div class="value">${data.alunos.length}</div></div>
         <div class="stat"><div class="label">Unidades com aluno</div><div class="value">${Object.keys(grupos).length}</div></div>
       </div>
+      ${graficoUnidadeHtml}
+      <div class="section-title">Detalhamento por unidade</div>
       <table><thead><tr><th>Unidade</th><th style="text-align:right;">Total</th><th style="text-align:right;">Ativos</th><th style="text-align:right;">Inativos</th></tr></thead><tbody>${linhas}</tbody></table>
+      ${graficoFaixaHtml}
       ${rodapeRelatorioModerno()}
     </body></html>`;
 
