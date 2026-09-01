@@ -2284,7 +2284,6 @@ function estiloRelatorioModerno() {
     @page { size: A4; margin: 14mm; }
     * { box-sizing: border-box; }
     body{font-family:'Segoe UI',Arial,Helvetica,sans-serif;color:#1B2027;margin:0;padding:14mm;background:#fff;}
-    .marca-dagua{position:fixed;bottom:8mm;right:-10mm;width:280px;opacity:0.05;pointer-events:none;z-index:0;}
     .marca-dagua-grande{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:160mm;opacity:0.08;filter:invert(1);pointer-events:none;z-index:0;}
     .cabecalho{position:relative;display:flex;align-items:center;gap:14px;padding-bottom:14px;margin-bottom:6px;}
     .cabecalho::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:linear-gradient(90deg,#C9A227,#F5D67D 50%,#C9A227);border-radius:2px;}
@@ -2334,8 +2333,7 @@ function rodapeRelatorioModerno() {
 }
 
 function marcaDaguaRelatorio(data) {
-  if (data.academia.marcaDagua) return `<img class="marca-dagua-grande" src="${data.academia.marcaDagua}" alt="" />`;
-  return data.academia.logo ? `<img class="marca-dagua" src="${data.academia.logo}" alt="" />` : "";
+  return data.academia.marcaDagua ? `<img class="marca-dagua-grande" src="${data.academia.marcaDagua}" alt="" />` : "";
 }
 
 function abrirJanelaRelatorio(html, onErro) {
