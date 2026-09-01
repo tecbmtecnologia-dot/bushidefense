@@ -2949,7 +2949,8 @@ function CheckinRetroativoProfessor({ data, save, prof, dark = true }) {
 }
 
 function PresencaManualProfessor({ data, save, prof, dark = true }) {
-  const [turmaId, setTurmaId] = useState(data.turmas[0]?.id || "");
+  const turmasDisponiveis = data.turmas.filter((t) => !t.professorId || t.professorId === prof.id);
+  const [turmaId, setTurmaId] = useState(turmasDisponiveis[0]?.id || "");
   const meusAlunos = data.alunos.filter((a) => a.professorId === prof.id);
   const sessaoAtiva = data.sessoes.find((s) => s.treinoId === turmaId && s.professorId === prof.id && s.ativa);
 
@@ -2973,7 +2974,7 @@ function PresencaManualProfessor({ data, save, prof, dark = true }) {
     <Card style={{ marginBottom: 16, ...(dark ? { background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" } : {}) }}>
       <div style={dark ? { ...blockTitleStyle, color: "#FFFFFF" } : blockTitleStyle}>Marcar presença manual</div>
       <p style={{ fontSize: 12.5, color: dark ? "#C9C4B4" : "#5A5648", marginTop: 0 }}>Para quando o aluno esqueceu o celular ou não conseguiu fazer o check-in por localização.</p>
-      <Field label="Turma" labelColor={dark ? "#C9C4B4" : undefined}><select style={dark ? inputStyleDark : inputStyle} value={turmaId} onChange={(e) => setTurmaId(e.target.value)}>{data.turmas.map((t) => <option key={t.id} value={t.id} style={dark ? { background: "#1A1D24", color: "#F5F3EC" } : undefined}>{t.nome} — {t.horario}{t.horarioFim ? ` às ${t.horarioFim}` : ""}</option>)}</select></Field>
+      <Field label="Turma" labelColor={dark ? "#C9C4B4" : undefined}><select style={dark ? inputStyleDark : inputStyle} value={turmaId} onChange={(e) => setTurmaId(e.target.value)}>{turmasDisponiveis.map((t) => <option key={t.id} value={t.id} style={dark ? { background: "#1A1D24", color: "#F5F3EC" } : undefined}>{t.nome} — {t.horario}{t.horarioFim ? ` às ${t.horarioFim}` : ""}</option>)}</select></Field>
       {!sessaoAtiva ? (
         <div style={{ marginTop: 10 }}><Button variant="gold" icon={CalendarCheck} onClick={abrirSessao}>Abrir check-in desta turma agora</Button></div>
       ) : meusAlunos.length === 0 ? (
@@ -3138,8 +3139,9 @@ function AlunosPertoDeGraduar({ data, prof, dark = true }) {
   );
 }
 
-function ContadorCheckinsAula({ data, dark = true }) {
-  const [turmaId, setTurmaId] = useState(data.turmas[0]?.id || "");
+function ContadorCheckinsAula({ data, dark = true, prof = null }) {
+  const turmasDisponiveis = prof ? data.turmas.filter((t) => !t.professorId || t.professorId === prof.id) : data.turmas;
+  const [turmaId, setTurmaId] = useState(turmasDisponiveis[0]?.id || "");
   const idsSessoesDaTurma = new Set(data.sessoes.filter((s) => s.treinoId === turmaId).map((s) => s.id));
   const total = data.checkins.filter((c) => idsSessoesDaTurma.has(c.sessaoId) && dataLocalDe(c.dataHora) === hoje()).length;
   return (
@@ -3149,7 +3151,7 @@ function ContadorCheckinsAula({ data, dark = true }) {
         <div style={{ flex: "0 1 220px", minWidth: 160 }}>
           <Field label="Selecionar turma" labelColor={dark ? "#C9C4B4" : undefined}>
             <select style={dark ? inputStyleDark : inputStyle} value={turmaId} onChange={(e) => setTurmaId(e.target.value)}>
-              {data.turmas.map((t) => <option key={t.id} value={t.id} style={{ background: "#1A1D24", color: "#F5F3EC" }}>{t.nome} — {t.horario}{t.horarioFim ? ` às ${t.horarioFim}` : ""}</option>)}
+              {turmasDisponiveis.map((t) => <option key={t.id} value={t.id} style={{ background: "#1A1D24", color: "#F5F3EC" }}>{t.nome} — {t.horario}{t.horarioFim ? ` às ${t.horarioFim}` : ""}</option>)}
             </select>
           </Field>
         </div>
@@ -4179,7 +4181,7 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
                 <div style={{ flex: "0 1 260px", minWidth: 160 }}>
                   <Field label="Selecionar treino" labelColor="#9B9891">
                     <select style={{ ...inputStyle, background: "#0F1218", border: "1px solid rgba(255,255,255,0.12)", color: "#F0EEE8", colorScheme: "dark" }} value={turmaId} onChange={(e) => setTurmaId(e.target.value)}>
-                      {data.turmas.map((t) => <option key={t.id} value={t.id} style={{ background: "#1A1D24", color: "#F5F3EC" }}>{t.nome} — {t.horario}{t.horarioFim ? ` às ${t.horarioFim}` : ""}</option>)}
+                      {data.turmas.filter((t) => !t.professorId || t.professorId === prof.id).map((t) => <option key={t.id} value={t.id} style={{ background: "#1A1D24", color: "#F5F3EC" }}>{t.nome} — {t.horario}{t.horarioFim ? ` às ${t.horarioFim}` : ""}</option>)}
                     </select>
                   </Field>
                 </div>
@@ -4319,7 +4321,7 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
 
       {tab === "checkins" && (
         <div>
-          <ContadorCheckinsAula data={data} dark />
+          <ContadorCheckinsAula data={data} dark prof={prof} />
           <CheckinRetroativoProfessor data={data} save={save} prof={prof} dark />
           <RelatorioCheckinsProfessor data={data} prof={prof} dark />
         </div>
@@ -4453,7 +4455,10 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
     const idx = Math.round(pagerRef.current.scrollLeft / pagerRef.current.clientWidth);
     setPaginaAtiva(idx);
   };
-  const [turmaId, setTurmaId] = useState(data.turmas[0]?.id || "");
+  const [turmaId, setTurmaId] = useState(() => {
+    const minhaOuGeral = data.turmas.find((t) => !t.professorId || t.professorId === prof.id);
+    return (minhaOuGeral || data.turmas[0])?.id || "";
+  });
   const sessaoAtiva = data.sessoes.find((s) => s.professorId === prof.id && s.treinoId === turmaId && s.ativa);
   const fileRef = useRef(null);
   const [editandoPerfil, setEditandoPerfil] = useState(false);
@@ -4686,7 +4691,7 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
                 <div style={{ flex: "0 1 220px", minWidth: 160 }}>
                   <Field label="Selecionar treino" labelColor="#C9C4B4">
                     <select style={inputStyleDark} value={turmaId} onChange={(e) => setTurmaId(e.target.value)}>
-                      {data.turmas.map((t) => <option key={t.id} value={t.id} style={{ background: "#1A1D24", color: "#F5F3EC" }}>{t.nome} — {t.horario}{t.horarioFim ? ` às ${t.horarioFim}` : ""}</option>)}
+                      {data.turmas.filter((t) => !t.professorId || t.professorId === prof.id).map((t) => <option key={t.id} value={t.id} style={{ background: "#1A1D24", color: "#F5F3EC" }}>{t.nome} — {t.horario}{t.horarioFim ? ` às ${t.horarioFim}` : ""}</option>)}
                     </select>
                   </Field>
                 </div>
@@ -4858,7 +4863,7 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
         <div className="qg-sem-barra" style={{ flex: "0 0 100%", width: "100%", boxSizing: "border-box", scrollSnapAlign: "start", scrollSnapStop: "always", overflowY: "auto", touchAction: "pan-y", padding: "20px 20px 24px" }}>
           <div style={{ fontFamily: "Oswald", fontWeight: 700, fontSize: 20, color: "#fff", textTransform: "uppercase", marginBottom: 4 }}>📍 Check-ins</div>
           <div style={{ fontSize: 12.5, color: "#9B9891", marginBottom: 16 }}>Presença e histórico das aulas</div>
-          <ContadorCheckinsAula data={data} />
+          <ContadorCheckinsAula data={data} prof={prof} />
           <CheckinRetroativoProfessor data={data} save={save} prof={prof} />
           <RelatorioCheckinsProfessor data={data} prof={prof} />
         </div>
