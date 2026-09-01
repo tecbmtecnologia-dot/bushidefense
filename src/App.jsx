@@ -3628,6 +3628,56 @@ function ProdutosProfessor({ data, save, prof }) {
   );
 }
 
+function TurmasProfessor({ data, save, prof }) {
+  const [nova, setNova] = useState(false);
+  const [editando, setEditando] = useState(null);
+  const minhasTurmas = data.turmas.filter((t) => t.professorId === prof.id);
+
+  const adicionar = async (form) => {
+    const turma = { id: uid(), ...form, professorId: prof.id };
+    await save({ ...data, turmas: [...data.turmas, turma] });
+    setNova(false);
+  };
+  const editar = async (id, form) => {
+    const turmas = data.turmas.map((t) => (t.id === id ? { ...t, ...form } : t));
+    await save({ ...data, turmas });
+    setEditando(null);
+  };
+  const remover = async (id) => {
+    await save({ ...data, turmas: data.turmas.filter((t) => t.id !== id) });
+  };
+
+  return (
+    <div>
+      <p style={{ fontSize: 12.5, color: "#9B9891", marginTop: 0 }}>Turmas que você cadastrar aqui aparecem na grade de horários dos seus alunos vinculados, e você pode iniciar o check-in delas normalmente.</p>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+        <Button icon={Plus} onClick={() => setNova(true)}>Nova turma</Button>
+      </div>
+      {nova && <TurmaForm unidades={data.unidades} onCancel={() => setNova(false)} onSave={adicionar} />}
+      {editando && <TurmaForm unidades={data.unidades} initial={editando} onCancel={() => setEditando(null)} onSave={(form) => editar(editando.id, form)} />}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {minhasTurmas.map((t) => {
+          const unidadeDaTurma = (data.unidades || []).find((u) => u.id === t.unidadeId);
+          return (
+            <Card dark key={t.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: 12, flexWrap: "wrap", gap: 8 }}>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 14, color: "#F5F3EC" }}>{t.nome}</div>
+                <div style={{ fontSize: 12.5, color: "#9B9891" }}>{formatDias(t.dias)} · {t.horario}{t.horarioFim ? ` às ${t.horarioFim}` : ""}</div>
+                <div style={{ fontSize: 11.5, color: "#9B9891" }}>Unidade: {unidadeDaTurma ? unidadeDaTurma.nome : "QG (padrão)"}</div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Button variant="ghost" onClick={() => setEditando(t)} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>Editar</Button>
+                <ConfirmDelete onConfirm={() => remover(t.id)} />
+              </div>
+            </Card>
+          );
+        })}
+        {minhasTurmas.length === 0 && <Empty dark>Nenhuma turma cadastrada ainda.</Empty>}
+      </div>
+    </div>
+  );
+}
+
 function ProdutosAluno({ produtos }) {
   const [aberto, setAberto] = useState(false);
   const [selecionadoId, setSelecionadoId] = useState(null);
@@ -4023,6 +4073,7 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
     { id: "inicio", label: "Início" },
     { id: "alunos", label: "Meus Alunos" },
     { id: "checkins", label: "Check-ins" },
+    { id: "turmas", label: "Turmas" },
     { id: "financeiro", label: "Financeiro" },
     { id: "relatorios", label: "Relatórios" },
     { id: "avisos", label: "Avisos" },
@@ -4053,7 +4104,7 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
     });
 
   const iconesTabs = {
-    dashboard: "📊", inicio: "🏠", alunos: "🤼", checkins: "📍", financeiro: "💰", relatorios: "📑", avisos: "🔔", videos: "🎬", produtos: "🛍️", perfil: "👤",
+    dashboard: "📊", inicio: "🏠", alunos: "🤼", checkins: "📍", turmas: "📅", financeiro: "💰", relatorios: "📑", avisos: "🔔", videos: "🎬", produtos: "🛍️", perfil: "👤",
   };
 
   const [refFullBleed, estiloFullBleed] = useFullBleed();
@@ -4273,6 +4324,8 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
           <RelatorioCheckinsProfessor data={data} prof={prof} dark />
         </div>
       )}
+
+      {tab === "turmas" && <TurmasProfessor data={data} save={save} prof={prof} />}
 
       {tab === "financeiro" && (
         <div>
@@ -4828,8 +4881,12 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
         {/* PÁGINA 6 — MAIS */}
         <div className="qg-sem-barra" style={{ flex: "0 0 100%", width: "100%", boxSizing: "border-box", scrollSnapAlign: "start", scrollSnapStop: "always", overflowY: "auto", touchAction: "pan-y", padding: "20px 20px 24px" }}>
           <div style={{ fontFamily: "Oswald", fontWeight: 700, fontSize: 20, color: "#fff", textTransform: "uppercase", marginBottom: 4 }}>☰ Mais</div>
-          <div style={{ fontSize: 12.5, color: "#9B9891", marginBottom: 16 }}>Avisos e produtos</div>
+          <div style={{ fontSize: 12.5, color: "#9B9891", marginBottom: 16 }}>Avisos, turmas e produtos</div>
           <AvisosProfessor data={data} save={save} prof={prof} dark={true} />
+          <div style={{ marginTop: 20 }}>
+            <div style={{ ...blockTitleStyle, color: "#F5F3EC" }}>📅 Minhas turmas</div>
+            <TurmasProfessor data={data} save={save} prof={prof} />
+          </div>
           <div style={{ marginTop: 20 }}>
             <div style={{ ...blockTitleStyle, color: "#F5F3EC" }}>🛍️ Produtos à venda</div>
             <ProdutosProfessor data={data} save={save} prof={prof} />

@@ -15,7 +15,7 @@ const MAPS = {
     categoria: "categoria", observacoes: "observacoes", ordem: "ordem",
   },
   planos: { id: "id", nome: "nome", valor: "valor", periodicidade: "periodicidade", unidadeId: "unidade_id" },
-  turmas: { id: "id", nome: "nome", dias: "dias", horario: "horario", horarioFim: "horario_fim", unidadeId: "unidade_id" },
+  turmas: { id: "id", nome: "nome", dias: "dias", horario: "horario", horarioFim: "horario_fim", unidadeId: "unidade_id", professorId: "professor_id" },
   professores: {
     id: "id", nome: "nome", email: "email", especialidade: "especialidade",
     telefone: "telefone", endereco: "endereco", faixaId: "faixa_id", grau: "grau", foto: "foto", senha: "senha",
