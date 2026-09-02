@@ -2347,6 +2347,40 @@ function abrirJanelaRelatorio(html, onErro) {
 }
 // ---------- Fim dos helpers ----------
 
+function gerarDocumentoTermoAssinado(data, aluno, onErro) {
+  if (!aluno.termoAceito && !aluno.termoAssinadoManual) { onErro && onErro("Este aluno ainda não assinou o termo."); return; }
+
+  const pdfLink = data.academia.termoPdf
+    ? `<p style="font-size:12px;"><a href="${data.academia.termoPdf}" target="_blank">📄 Ver termo em PDF (${data.academia.termoPdfNome || "termo.pdf"})</a></p>`
+    : "";
+  const termoHtml = data.academia.termoPadrao
+    ? `<div style="white-space:pre-wrap;font-size:12.5px;line-height:1.6;border:1px solid #EFEBDF;border-radius:8px;padding:14px;margin:14px 0;">${data.academia.termoPadrao}</div>`
+    : "";
+  const assinaturaHtml = aluno.termoAssinadoManual
+    ? `<p style="font-size:12.5px;color:#5A5648;margin-top:16px;">Assinado fisicamente em papel — registrado manualmente pela administração, sem assinatura digital.</p>`
+    : aluno.assinaturaTermo
+      ? `<div style="margin-top:20px;"><img src="${aluno.assinaturaTermo}" style="max-width:280px;display:block;" /><div style="border-top:1px solid #1B2027;width:280px;margin-top:2px;"></div><div style="font-size:11px;color:#8A8574;margin-top:4px;">Assinatura de ${aluno.nome}</div></div>`
+      : `<p style="font-size:12.5px;color:#B3401E;font-weight:700;margin-top:16px;">Sem assinatura registrada (aceito antes dessa funcionalidade existir).</p>`;
+
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Termo assinado - ${aluno.nome}</title>
+    <style>${estiloRelatorioModerno()}</style></head>
+    <body>
+      ${marcaDaguaRelatorio(data)}
+      <button class="voltar-btn" onclick="window.close()">← Voltar para o app</button>
+      ${cabecalhoRelatorioModerno(data, "Termo de consentimento assinado", aluno.nome)}
+      <div class="stats">
+        <div class="stat"><div class="label">Aluno</div><div class="value" style="font-size:15px;">${aluno.nome}</div></div>
+        <div class="stat"><div class="label">Aceito em</div><div class="value" style="font-size:15px;">${aluno.termoAceitoEm ? new Date(aluno.termoAceitoEm).toLocaleString("pt-BR") : "—"}</div></div>
+      </div>
+      ${pdfLink}
+      ${termoHtml}
+      ${assinaturaHtml}
+      ${rodapeRelatorioModerno()}
+    </body></html>`;
+
+  abrirJanelaRelatorio(html, onErro);
+}
+
 function gerarRelatorioMensal(data, mes, onErro, alunosFiltro, tituloExtra) {
   const alunosBase = alunosFiltro || data.alunos;
   const confirmadosMes = alunosBase.flatMap((a) => (a.pagamentos || []).filter((p) => p.data.slice(0, 7) === mes).map((p) => ({ ...p, alunoNome: a.nome })));
@@ -4327,13 +4361,17 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
                           <div>
                             <div style={{ fontSize: 12.5, color: "#4ADE80", fontWeight: 600, marginBottom: 8 }}>Aceito em {new Date(a.termoAceitoEm).toLocaleDateString("pt-BR")}</div>
                             {a.assinaturaTermo ? (
-                              <img src={a.assinaturaTermo} alt="Assinatura do termo" style={{ background: "#fff", borderRadius: 8, border: "1px solid rgba(255,255,255,0.14)", maxWidth: 240, display: "block" }} />
+                              <img src={a.assinaturaTermo} alt="Assinatura do termo" style={{ background: "#fff", borderRadius: 8, border: "1px solid rgba(255,255,255,0.14)", maxWidth: 240, display: "block", marginBottom: 8 }} />
                             ) : (
-                              <div style={{ fontSize: 11.5, color: "#9B9891" }}>Sem assinatura registrada (aceito antes dessa funcionalidade existir).</div>
+                              <div style={{ fontSize: 11.5, color: "#9B9891", marginBottom: 8 }}>Sem assinatura registrada (aceito antes dessa funcionalidade existir).</div>
                             )}
+                            <Button variant="ghost" onClick={() => gerarDocumentoTermoAssinado(data, a, (msg) => alert(msg))} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>Ver documento assinado</Button>
                           </div>
                         ) : a.termoAssinadoManual ? (
-                          <div style={{ fontSize: 12.5, color: "#9B9891" }}>Assinado fisicamente (registrado pela administração).</div>
+                          <div>
+                            <div style={{ fontSize: 12.5, color: "#9B9891", marginBottom: 8 }}>Assinado fisicamente (registrado pela administração).</div>
+                            <Button variant="ghost" onClick={() => gerarDocumentoTermoAssinado(data, a, (msg) => alert(msg))} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>Ver documento</Button>
+                          </div>
                         ) : (
                           <div style={{ fontSize: 12.5, color: "#FF8A80", fontWeight: 600 }}>Pendente — o aluno ainda não assinou.</div>
                         )}
@@ -4875,13 +4913,17 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
                           <div>
                             <div style={{ fontSize: 12.5, color: "#4ADE80", fontWeight: 600, marginBottom: 8 }}>Aceito em {new Date(a.termoAceitoEm).toLocaleDateString("pt-BR")}</div>
                             {a.assinaturaTermo ? (
-                              <img src={a.assinaturaTermo} alt="Assinatura do termo" style={{ background: "#fff", borderRadius: 8, border: "1px solid rgba(255,255,255,0.14)", maxWidth: 240, display: "block" }} />
+                              <img src={a.assinaturaTermo} alt="Assinatura do termo" style={{ background: "#fff", borderRadius: 8, border: "1px solid rgba(255,255,255,0.14)", maxWidth: 240, display: "block", marginBottom: 8 }} />
                             ) : (
-                              <div style={{ fontSize: 11.5, color: "#9B9891" }}>Sem assinatura registrada (aceito antes dessa funcionalidade existir).</div>
+                              <div style={{ fontSize: 11.5, color: "#9B9891", marginBottom: 8 }}>Sem assinatura registrada (aceito antes dessa funcionalidade existir).</div>
                             )}
+                            <Button variant="ghost" onClick={() => gerarDocumentoTermoAssinado(data, a, (msg) => alert(msg))} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>Ver documento assinado</Button>
                           </div>
                         ) : a.termoAssinadoManual ? (
-                          <div style={{ fontSize: 12.5, color: "#9B9891" }}>Assinado fisicamente (registrado pela administração).</div>
+                          <div>
+                            <div style={{ fontSize: 12.5, color: "#9B9891", marginBottom: 8 }}>Assinado fisicamente (registrado pela administração).</div>
+                            <Button variant="ghost" onClick={() => gerarDocumentoTermoAssinado(data, a, (msg) => alert(msg))} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>Ver documento</Button>
+                          </div>
                         ) : (
                           <div style={{ fontSize: 12.5, color: "#FF8A80", fontWeight: 600 }}>Pendente — o aluno ainda não assinou.</div>
                         )}
