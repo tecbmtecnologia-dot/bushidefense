@@ -3416,10 +3416,11 @@ function youtubeEmbedUrl(url) {
   return match ? `https://www.youtube.com/embed/${match[1]}` : null;
 }
 
-function VideoForm({ onSave, onCancel }) {
+function VideoForm({ unidades, onSave, onCancel }) {
   const [titulo, setTitulo] = useState("");
   const [legenda, setLegenda] = useState("");
   const [url, setUrl] = useState("");
+  const [unidadeId, setUnidadeId] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [progresso, setProgresso] = useState(0);
   const [erro, setErro] = useState("");
@@ -3441,13 +3442,19 @@ function VideoForm({ onSave, onCancel }) {
     }
   };
 
-  const submit = () => { if (!titulo.trim() || !url.trim()) return; onSave({ titulo, legenda, url }); };
+  const submit = () => { if (!titulo.trim() || !url.trim()) return; onSave({ titulo, legenda, url, unidadeId }); };
 
   return (
     <Card style={{ marginBottom: 12 }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <Field label="Título"><input style={inputStyle} value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="Ex: Raspagem básica da guarda fechada" /></Field>
         <Field label="Legenda (opcional)"><input style={inputStyle} value={legenda} onChange={(e) => setLegenda(e.target.value)} placeholder="Ex: Atenção ao ângulo do quadril" /></Field>
+        <Field label="Unidade">
+          <select style={inputStyle} value={unidadeId} onChange={(e) => setUnidadeId(e.target.value)}>
+            <option value="">Todas as unidades</option>
+            {(unidades || []).map((u) => <option key={u.id} value={u.id}>{u.nome}</option>)}
+          </select>
+        </Field>
         <Field label="Link do YouTube">
           <input style={inputStyle} value={url.startsWith("http") && !url.includes("/storage/v1/") ? url : ""} onChange={(e) => setUrl(e.target.value)} placeholder="https://youtube.com/watch?v=..." />
         </Field>
@@ -3482,23 +3489,26 @@ function VideosProfessor({ data, save, prof }) {
 
   return (
     <div>
-      <p style={{ fontSize: 12.5, color: "#9B9891", marginTop: 0 }}>Vídeos que você publicar aqui aparecem só pros seus alunos vinculados — cole um link do YouTube ou envie um arquivo MP4 direto.</p>
+      <p style={{ fontSize: 12.5, color: "#9B9891", marginTop: 0 }}>Vídeos que você publicar aqui aparecem só pros seus alunos vinculados — cole um link do YouTube ou envie um arquivo MP4 direto. Também dá pra vincular a uma unidade específica.</p>
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
         <Button icon={Plus} onClick={() => setNovo(true)}>Novo vídeo</Button>
       </div>
-      {novo && <VideoForm onCancel={() => setNovo(false)} onSave={adicionar} />}
+      {novo && <VideoForm unidades={data.unidades} onCancel={() => setNovo(false)} onSave={adicionar} />}
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {videosVisiveis.map((v) => (
+        {videosVisiveis.map((v) => {
+          const unidadeDoVideo = (data.unidades || []).find((u) => u.id === v.unidadeId);
+          return (
           <Card dark key={v.id} style={{ padding: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
             <div>
-              <span style={{ fontSize: 10, fontWeight: 700, color: "#C9A227", textTransform: "uppercase" }}>{!v.professorId ? "Geral (todos)" : "Só seus alunos"}</span>
+              <span style={{ fontSize: 10, fontWeight: 700, color: "#C9A227", textTransform: "uppercase" }}>{!v.professorId ? "Geral (todos)" : "Só seus alunos"}{unidadeDoVideo ? ` · ${unidadeDoVideo.nome}` : ""}</span>
               <div style={{ fontWeight: 700, fontSize: 14, color: "#F5F3EC" }}>{v.titulo}</div>
               {v.legenda && <div style={{ fontSize: 12, color: "#9B9891" }}>{v.legenda}</div>}
               <a href={v.url} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: "#C9A227" }}>{v.url.includes("/storage/v1/") ? "Arquivo enviado" : v.url}</a>
             </div>
             {v.professorId === prof.id && <ConfirmDelete onConfirm={() => remover(v.id)} />}
           </Card>
-        ))}
+          );
+        })}
         {videosVisiveis.length === 0 && <Empty dark>Nenhum vídeo publicado ainda.</Empty>}
       </div>
     </div>
@@ -3515,14 +3525,15 @@ function VideosAdmin({ data, save }) {
     setNovo(false);
   };
   const remover = async (id) => { await save({ ...data, videos: (data.videos || []).filter((v) => v.id !== id) }); };
+  const atualizarUnidade = async (id, unidadeId) => { const videos = data.videos.map((v) => (v.id === id ? { ...v, unidadeId } : v)); await save({ ...data, videos }); };
 
   return (
     <div>
-      <p style={{ fontSize: 12.5, color: "#9B9891", marginTop: 0 }}>Vídeos de técnicas e posições para os alunos assistirem dentro do próprio app — cole um link do YouTube ou envie um arquivo MP4 direto.</p>
+      <p style={{ fontSize: 12.5, color: "#9B9891", marginTop: 0 }}>Vídeos de técnicas e posições para os alunos assistirem dentro do próprio app — cole um link do YouTube ou envie um arquivo MP4 direto. Vincule a uma unidade pra ele aparecer só pros alunos de lá.</p>
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
         <Button icon={Plus} onClick={() => setNovo(true)}>Novo vídeo</Button>
       </div>
-      {novo && <VideoForm onCancel={() => setNovo(false)} onSave={adicionar} />}
+      {novo && <VideoForm unidades={data.unidades} onCancel={() => setNovo(false)} onSave={adicionar} />}
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {videos.map((v) => (
           <Card dark key={v.id} style={{ padding: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
@@ -3534,7 +3545,13 @@ function VideosAdmin({ data, save }) {
               {v.legenda && <div style={{ fontSize: 12, color: "#9B9891" }}>{v.legenda}</div>}
               <a href={v.url} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: "#C9A227" }}>{v.url.includes("/storage/v1/") ? "Arquivo enviado" : v.url}</a>
             </div>
-            <ConfirmDelete onConfirm={() => remover(v.id)} />
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <select style={{ ...inputStyleDark, width: 160 }} value={v.unidadeId || ""} onChange={(e) => atualizarUnidade(v.id, e.target.value)}>
+                <option value="">Todas as unidades</option>
+                {(data.unidades || []).map((u) => <option key={u.id} value={u.id}>{u.nome}</option>)}
+              </select>
+              <ConfirmDelete onConfirm={() => remover(v.id)} />
+            </div>
           </Card>
         ))}
         {videos.length === 0 && <Empty dark>Nenhum vídeo publicado ainda.</Empty>}
@@ -5561,7 +5578,7 @@ function AlunoDashboard({ data, save, aluno, onSair }) {
 
           <GradeHorarios turmas={turmasGeraisDaUnidade} />
 
-          <VideosAluno videos={(data.videos || []).filter((v) => !v.professorId || v.professorId === aluno.professorId)} />
+          <VideosAluno videos={(data.videos || []).filter((v) => (!v.professorId || v.professorId === aluno.professorId) && (!v.unidadeId || v.unidadeId === aluno.unidadeId))} />
 
           <ProdutosAluno produtos={(data.produtos || []).filter((p) => p.professorId === aluno.professorId && p.ativo !== false)} />
 
