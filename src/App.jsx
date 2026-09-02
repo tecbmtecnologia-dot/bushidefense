@@ -3809,6 +3809,7 @@ function UnidadeForm({ initial, onSave, onCancel }) {
   const [latitude, setLatitude] = useState(i.latitude ?? "");
   const [longitude, setLongitude] = useState(i.longitude ?? "");
   const [raioCheckin, setRaioCheckin] = useState(i.raioCheckin ?? 150);
+  const [chavePix, setChavePix] = useState(i.chavePix || "");
 
   const usarLocalizacaoAtual = () => {
     if (!navigator.geolocation) return;
@@ -3821,7 +3822,7 @@ function UnidadeForm({ initial, onSave, onCancel }) {
   const submit = () => {
     if (!nome.trim()) return;
     onSave({
-      nome, endereco,
+      nome, endereco, chavePix,
       latitude: latitude === "" ? null : Number(latitude),
       longitude: longitude === "" ? null : Number(longitude),
       raioCheckin: raioCheckin === "" ? null : Number(raioCheckin),
@@ -3833,6 +3834,7 @@ function UnidadeForm({ initial, onSave, onCancel }) {
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <Field label="Nome da unidade"><input style={inputStyle} value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex: Unidade Norte, Personal, Aula na academia X" /></Field>
         <Field label="Endereço (opcional)"><input style={inputStyle} value={endereco} onChange={(e) => setEndereco(e.target.value)} /></Field>
+        <Field label="Chave PIX desta unidade (opcional)"><input style={inputStyle} value={chavePix} onChange={(e) => setChavePix(e.target.value)} placeholder="Se vazio, usa a chave PIX geral da academia" /></Field>
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr) minmax(0,1fr)", gap: 10 }}>
           <Field label="Latitude"><input type="number" step="any" style={inputStyle} value={latitude} onChange={(e) => setLatitude(e.target.value)} /></Field>
           <Field label="Longitude"><input type="number" step="any" style={inputStyle} value={longitude} onChange={(e) => setLongitude(e.target.value)} /></Field>
@@ -3887,6 +3889,7 @@ function UnidadesAdmin({ data, save }) {
               <div style={{ fontSize: 12, color: "#9B9891" }}>
                 {u.latitude != null ? `${u.endereco || "Local cadastrado"} · raio ${u.raioCheckin || 150}m` : "Sem localização fixa (não exige geolocalização)"}
               </div>
+              <div style={{ fontSize: 11.5, color: "#9B9891" }}>PIX: {u.chavePix || "usa a chave geral da academia"}</div>
             </div>
             <div style={{ display: "flex", gap: 8 }}>
               <Button variant="ghost" onClick={() => setEditando(u)} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>Editar</Button>
@@ -5493,7 +5496,7 @@ function AlunoDashboard({ data, save, aluno, onSair }) {
         <div className="qg-sem-barra" style={{ flex: "0 0 100%", width: "100%", boxSizing: "border-box", scrollSnapAlign: "start", scrollSnapStop: "always", overflowY: "auto", touchAction: "pan-y", padding: "20px 20px 24px" }}>
           <div style={{ fontFamily: "Oswald", fontWeight: 700, fontSize: 20, color: "#fff", textTransform: "uppercase", marginBottom: 4 }}>💰 Financeiro</div>
           <div style={{ fontSize: 12.5, color: "#9B9891", marginBottom: 16 }}>Seus pagamentos e a chave PIX do QG</div>
-          <FinanceiroAluno aluno={aluno} planos={data.planos} chavePix={data.academia.chavePix} />
+          <FinanceiroAluno aluno={aluno} planos={data.planos} chavePix={(data.unidades || []).find((u) => u.id === aluno.unidadeId)?.chavePix || data.academia.chavePix} />
         </div>
 
         {/* PÁGINA 3 — EVOLUÇÃO */}

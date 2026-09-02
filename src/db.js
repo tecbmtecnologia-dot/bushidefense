@@ -38,7 +38,7 @@ const MAPS = {
   checkins: { id: "id", sessaoId: "sessao_id", alunoId: "aluno_id", dataHora: "data_hora" },
   avisos: { id: "id", titulo: "titulo", mensagem: "mensagem", tipo: "tipo", dataEvento: "data_evento", criadoEm: "criado_em", professorId: "professor_id" },
   videos: { id: "id", titulo: "titulo", url: "url", legenda: "legenda", criadoEm: "criado_em", professorId: "professor_id", unidadeId: "unidade_id" },
-  unidades: { id: "id", nome: "nome", endereco: "endereco", latitude: "latitude", longitude: "longitude", raioCheckin: "raio_checkin" },
+  unidades: { id: "id", nome: "nome", endereco: "endereco", latitude: "latitude", longitude: "longitude", raioCheckin: "raio_checkin", chavePix: "chave_pix" },
   produtos: { id: "id", nome: "nome", valor: "valor", fotos: "fotos", ativo: "ativo", criadoEm: "criado_em", professorId: "professor_id" },
 };
 
