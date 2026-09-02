@@ -1,4 +1,4 @@
-const CACHE_NAME = "qg-cache-v32";
+const CACHE_NAME = "qg-cache-v33";
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();

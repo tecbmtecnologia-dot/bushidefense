@@ -1,7 +1,7 @@
 {
-  "name": "QG Cia Paulista",
-  "short_name": "QG Cia Paulista",
-  "description": "Check-in, graduação e pagamentos do QG",
+  "name": "Cia Paulista - Administrador",
+  "short_name": "CP Admin",
+  "description": "Check-in, graduação e pagamentos da Cia Paulista Jiu Jitsu",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
