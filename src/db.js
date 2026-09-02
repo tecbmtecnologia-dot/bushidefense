@@ -28,7 +28,7 @@ const MAPS = {
     grau: "grau", dataNascimento: "data_nascimento", matricula: "matricula", planoId: "plano_id",
     diaVencimento: "dia_vencimento", ultimoPagamento: "ultimo_pagamento",
     checkinsDesdeGraduacao: "checkins_desde_graduacao", termoAceito: "termo_aceito",
-    termoAceitoEm: "termo_aceito_em", termoAssinadoManual: "termo_assinado_manual", professorId: "professor_id", peso: "peso", apelido: "apelido", unidadeId: "unidade_id", ativo: "ativo", turmaId: "turma_id",
+    termoAceitoEm: "termo_aceito_em", termoAssinadoManual: "termo_assinado_manual", professorId: "professor_id", peso: "peso", apelido: "apelido", unidadeId: "unidade_id", ativo: "ativo", turmaId: "turma_id", assinaturaTermo: "assinatura_termo",
   },
   pagamentos: { id: "id", alunoId: "aluno_id", data: "data", valor: "valor" },
   sessoes_checkin: {

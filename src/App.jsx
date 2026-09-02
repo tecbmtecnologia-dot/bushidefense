@@ -4320,6 +4320,24 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
                           </span>
                         </div>
                       </div>
+
+                      <div style={secaoStyle}>
+                        <div style={tituloSecaoStyle}>📝 Termo de consentimento</div>
+                        {a.termoAceito ? (
+                          <div>
+                            <div style={{ fontSize: 12.5, color: "#4ADE80", fontWeight: 600, marginBottom: 8 }}>Aceito em {new Date(a.termoAceitoEm).toLocaleDateString("pt-BR")}</div>
+                            {a.assinaturaTermo ? (
+                              <img src={a.assinaturaTermo} alt="Assinatura do termo" style={{ background: "#fff", borderRadius: 8, border: "1px solid rgba(255,255,255,0.14)", maxWidth: 240, display: "block" }} />
+                            ) : (
+                              <div style={{ fontSize: 11.5, color: "#9B9891" }}>Sem assinatura registrada (aceito antes dessa funcionalidade existir).</div>
+                            )}
+                          </div>
+                        ) : a.termoAssinadoManual ? (
+                          <div style={{ fontSize: 12.5, color: "#9B9891" }}>Assinado fisicamente (registrado pela administração).</div>
+                        ) : (
+                          <div style={{ fontSize: 12.5, color: "#FF8A80", fontWeight: 600 }}>Pendente — o aluno ainda não assinou.</div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </Card>
@@ -4850,6 +4868,24 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
                           </span>
                         </div>
                       </div>
+
+                      <div style={secaoStyle}>
+                        <div style={tituloSecaoStyle}>📝 Termo de consentimento</div>
+                        {a.termoAceito ? (
+                          <div>
+                            <div style={{ fontSize: 12.5, color: "#4ADE80", fontWeight: 600, marginBottom: 8 }}>Aceito em {new Date(a.termoAceitoEm).toLocaleDateString("pt-BR")}</div>
+                            {a.assinaturaTermo ? (
+                              <img src={a.assinaturaTermo} alt="Assinatura do termo" style={{ background: "#fff", borderRadius: 8, border: "1px solid rgba(255,255,255,0.14)", maxWidth: 240, display: "block" }} />
+                            ) : (
+                              <div style={{ fontSize: 11.5, color: "#9B9891" }}>Sem assinatura registrada (aceito antes dessa funcionalidade existir).</div>
+                            )}
+                          </div>
+                        ) : a.termoAssinadoManual ? (
+                          <div style={{ fontSize: 12.5, color: "#9B9891" }}>Assinado fisicamente (registrado pela administração).</div>
+                        ) : (
+                          <div style={{ fontSize: 12.5, color: "#FF8A80", fontWeight: 600 }}>Pendente — o aluno ainda não assinou.</div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </Card>
@@ -4999,11 +5035,75 @@ function AlunoLogin({ data, save, onLogin }) {
   );
 }
 
+function SignaturePad({ onChange }) {
+  const canvasRef = useRef(null);
+  const desenhandoRef = useRef(false);
+  const vazioRef = useRef(true);
+
+  const getPos = (e, canvas) => {
+    const rect = canvas.getBoundingClientRect();
+    const ponto = e.touches ? e.touches[0] : e;
+    const escalaX = canvas.width / rect.width;
+    const escalaY = canvas.height / rect.height;
+    return { x: (ponto.clientX - rect.left) * escalaX, y: (ponto.clientY - rect.top) * escalaY };
+  };
+
+  const comecar = (e) => {
+    e.preventDefault();
+    const canvas = canvasRef.current;
+    const { x, y } = getPos(e, canvas);
+    const ctx = canvas.getContext("2d");
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    desenhandoRef.current = true;
+  };
+  const mover = (e) => {
+    if (!desenhandoRef.current) return;
+    e.preventDefault();
+    const canvas = canvasRef.current;
+    const { x, y } = getPos(e, canvas);
+    const ctx = canvas.getContext("2d");
+    ctx.lineTo(x, y);
+    ctx.strokeStyle = "#1B2027";
+    ctx.lineWidth = 2.4;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.stroke();
+    vazioRef.current = false;
+  };
+  const soltar = () => {
+    if (!desenhandoRef.current) return;
+    desenhandoRef.current = false;
+    if (!vazioRef.current) onChange(canvasRef.current.toDataURL("image/png"));
+  };
+  const limpar = () => {
+    const canvas = canvasRef.current;
+    canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
+    vazioRef.current = true;
+    onChange(null);
+  };
+
+  return (
+    <div>
+      <canvas
+        ref={canvasRef}
+        width={500}
+        height={160}
+        style={{ width: "100%", height: 140, background: "#fff", border: "1px solid #D8D3C4", borderRadius: 8, touchAction: "none", cursor: "crosshair" }}
+        onMouseDown={comecar} onMouseMove={mover} onMouseUp={soltar} onMouseLeave={soltar}
+        onTouchStart={comecar} onTouchMove={mover} onTouchEnd={soltar}
+      />
+      <button type="button" onClick={limpar} style={{ marginTop: 6, background: "none", border: "none", color: "#8A8574", fontSize: 12, cursor: "pointer", textDecoration: "underline", padding: 0 }}>Limpar assinatura</button>
+    </div>
+  );
+}
+
 function PrimeiroAcessoTermo({ data, save, aluno }) {
   const [aceito, setAceito] = useState(false);
+  const [assinatura, setAssinatura] = useState(null);
   const confirmar = async () => {
-    if (!aceito) return;
-    const alunos = data.alunos.map((a) => (a.id === aluno.id ? { ...a, termoAceito: true, termoAceitoEm: new Date().toISOString(), primeiroAcesso: false } : a));
+    if (!aceito || !assinatura) return;
+    const alunos = data.alunos.map((a) => (a.id === aluno.id ? { ...a, termoAceito: true, termoAceitoEm: new Date().toISOString(), primeiroAcesso: false, assinaturaTermo: assinatura } : a));
     await save({ ...data, alunos });
   };
   return (
@@ -5022,7 +5122,11 @@ function PrimeiroAcessoTermo({ data, save, aluno }) {
           <input type="checkbox" checked={aceito} onChange={(e) => setAceito(e.target.checked)} style={{ marginTop: 3 }} />
           Li o termo de consentimento (texto e/ou PDF) e estou ciente das condições.
         </label>
-        <Button icon={Check} variant="gold" disabled={!aceito} onClick={confirmar}>Continuar</Button>
+        <Field label="Assine com o dedo abaixo">
+          <SignaturePad onChange={setAssinatura} />
+        </Field>
+        <p style={{ fontSize: 11, color: "#8A8574", margin: "6px 0 12px" }}>Sua assinatura fica registrada com o termo e disponível para o seu professor.</p>
+        <Button icon={Check} variant="gold" disabled={!aceito || !assinatura} onClick={confirmar}>Continuar</Button>
       </Card>
     </div>
   );
@@ -5209,7 +5313,12 @@ function AlunoDashboard({ data, save, aluno, onSair }) {
     );
   };
 
-  const aceitarTermo = async () => { const alunos = data.alunos.map((a) => (a.id === aluno.id ? { ...a, termoAceito: true, termoAceitoEm: new Date().toISOString() } : a)); await save({ ...data, alunos }); };
+  const [assinaturaTermoMais, setAssinaturaTermoMais] = useState(null);
+  const aceitarTermo = async () => {
+    if (!assinaturaTermoMais) return;
+    const alunos = data.alunos.map((a) => (a.id === aluno.id ? { ...a, termoAceito: true, termoAceitoEm: new Date().toISOString(), assinaturaTermo: assinaturaTermoMais } : a));
+    await save({ ...data, alunos });
+  };
 
   return (
     <div style={{
@@ -5453,7 +5562,10 @@ function AlunoDashboard({ data, save, aluno, onSair }) {
               ) : (
                 <>
                   {data.academia.termoPadrao && <div style={{ whiteSpace: "pre-wrap", fontSize: 12.5, color: "#C4C0B4", maxHeight: 140, overflowY: "auto", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, padding: 10, marginBottom: 10 }}>{data.academia.termoPadrao}</div>}
-                  <Button icon={Check} variant="gold" onClick={aceitarTermo}>Li e aceito o termo</Button>
+                  <Field label="Assine com o dedo abaixo" labelColor="#C9C4B4">
+                    <SignaturePad onChange={setAssinaturaTermoMais} />
+                  </Field>
+                  <div style={{ marginTop: 10 }}><Button icon={Check} variant="gold" disabled={!assinaturaTermoMais} onClick={aceitarTermo}>Li e aceito o termo</Button></div>
                 </>
               )}
             </Card>
