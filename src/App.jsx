@@ -39,6 +39,22 @@ const DIAS_SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const formatDias = (dias) => (Array.isArray(dias) ? dias.join("/") : (dias || ""));
 
 const uid = () => (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : "id-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+// Navegadores modernos bloqueiam abrir um link "data:" direto em nova aba (por segurança).
+// Como PDFs enviados no admin ficam guardados como data URL, convertemos pra um blob antes de abrir.
+function abrirPdfDataUrl(dataUrl) {
+  try {
+    const [meta, base64] = dataUrl.split(",");
+    const mimeMatch = meta.match(/data:([^;]+)/);
+    const mime = mimeMatch ? mimeMatch[1] : "application/pdf";
+    const binario = atob(base64);
+    const bytes = new Uint8Array(binario.length);
+    for (let i = 0; i < binario.length; i++) bytes[i] = binario.charCodeAt(i);
+    const blob = new Blob([bytes], { type: mime });
+    window.open(URL.createObjectURL(blob), "_blank");
+  } catch (_) {
+    window.open(dataUrl, "_blank");
+  }
+}
 const randomCode = () => (Date.now().toString(36) + Math.random().toString(36).slice(2, 6)).toUpperCase();
 const hoje = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 const dataLocalDe = (isoString) => { const d = new Date(isoString); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
@@ -2351,7 +2367,7 @@ function gerarDocumentoTermoAssinado(data, aluno, onErro) {
   if (!aluno.termoAceito && !aluno.termoAssinadoManual) { onErro && onErro("Este aluno ainda não assinou o termo."); return; }
 
   const pdfLink = data.academia.termoPdf
-    ? `<p style="font-size:12px;"><a href="${data.academia.termoPdf}" target="_blank">📄 Ver termo em PDF (${data.academia.termoPdfNome || "termo.pdf"})</a></p>`
+    ? `<p style="font-size:12px;"><a href="${data.academia.termoPdf}" target="_blank" onclick="event.preventDefault();try{var p=this.href.split(',');var mime=(p[0].match(/data:([^;]+)/)||[])[1]||'application/pdf';var bin=atob(p[1]);var by=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)by[i]=bin.charCodeAt(i);window.open(URL.createObjectURL(new Blob([by],{type:mime})),'_blank');}catch(e){window.open(this.href,'_blank');}">📄 Ver termo em PDF (${data.academia.termoPdfNome || "termo.pdf"})</a></p>`
     : "";
   const termoHtml = data.academia.termoPadrao
     ? `<div style="white-space:pre-wrap;font-size:12.5px;line-height:1.6;border:1px solid #EFEBDF;border-radius:8px;padding:14px;margin:14px 0;">${data.academia.termoPadrao}</div>`
@@ -3807,7 +3823,7 @@ function GolpesProibidosCard({ pdf, pdfNome }) {
   return (
     <Card style={{ marginBottom: 14, background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}>
       <div style={{ ...blockTitleStyle, color: "#FFFFFF" }}>🚫 Golpes proibidos</div>
-      <a href={pdf} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "#C9A227" }}>
+      <a href={pdf} target="_blank" rel="noreferrer" onClick={(e) => { e.preventDefault(); abrirPdfDataUrl(pdf); }} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "#C9A227" }}>
         📄 Abrir PDF ({pdfNome || "golpes-proibidos.pdf"})
       </a>
     </Card>
@@ -5257,7 +5273,7 @@ function PrimeiroAcessoTermo({ data, save, aluno }) {
       <SectionTitle sub={`Bem-vindo(a), ${aluno.nome}! Antes de continuar, leia o termo abaixo.`}>Primeiro acesso</SectionTitle>
       <Card>
         {data.academia.termoPdf && (
-          <a href={data.academia.termoPdf} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "#12213B", marginBottom: 10 }}>
+          <a href={data.academia.termoPdf} target="_blank" rel="noreferrer" onClick={(e) => { e.preventDefault(); abrirPdfDataUrl(data.academia.termoPdf); }} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "#12213B", marginBottom: 10 }}>
             📄 Abrir termo em PDF ({data.academia.termoPdfNome || "termo.pdf"})
           </a>
         )}
@@ -5699,7 +5715,7 @@ function AlunoDashboard({ data, save, aluno, onSair }) {
             <Card style={{ marginBottom: 14, background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}>
               <div style={{ ...blockTitleStyle, color: "#F5F3EC" }}>Termo de consentimento</div>
               {data.academia.termoPdf && (
-                <a href={data.academia.termoPdf} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "#C9A227", marginBottom: 10 }}>
+                <a href={data.academia.termoPdf} target="_blank" rel="noreferrer" onClick={(e) => { e.preventDefault(); abrirPdfDataUrl(data.academia.termoPdf); }} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "#C9A227", marginBottom: 10 }}>
                   📄 Abrir termo em PDF ({data.academia.termoPdfNome || "termo.pdf"})
                 </a>
               )}
