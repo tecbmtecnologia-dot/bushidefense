@@ -3931,6 +3931,31 @@ function UnidadesAdmin({ data, save }) {
   );
 }
 
+function PedirAssinaturaTodos({ data, save }) {
+  const [confirmando, setConfirmando] = useState(false);
+  const [feito, setFeito] = useState(false);
+  const pedir = async () => {
+    const alunos = data.alunos.map((a) => ({ ...a, termoAceito: false, primeiroAcesso: true, assinaturaTermo: null }));
+    await save({ ...data, alunos });
+    setConfirmando(false);
+    setFeito(true);
+  };
+  return (
+    <div>
+      {confirmando ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 12.5, color: "#FF8A80", fontWeight: 600 }}>Isso vai pedir a assinatura de novo pra TODOS os {data.alunos.length} alunos (mesmo quem já assinou antes) na próxima vez que abrirem o app. Confirma?</span>
+          <Button variant="vermelho" onClick={pedir}>Sim, pedir de novo</Button>
+          <Button variant="ghost" style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }} onClick={() => setConfirmando(false)}>Cancelar</Button>
+        </div>
+      ) : (
+        <Button variant="ghost" onClick={() => { setConfirmando(true); setFeito(false); }} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>Pedir nova assinatura de todos os alunos</Button>
+      )}
+      {feito && <div style={{ fontSize: 12, color: "#4ADE80", fontWeight: 600, marginTop: 6 }}>Pronto — na próxima vez que cada aluno abrir o app, ele vai precisar assinar de novo (com o dedo, na tela).</div>}
+    </div>
+  );
+}
+
 function ConfiguracoesAdmin({ data, save }) {
   const [nome, setNome] = useState(data.academia.nome);
   const [chavePix, setChavePix] = useState(data.academia.chavePix || "");
@@ -4016,6 +4041,10 @@ function ConfiguracoesAdmin({ data, save }) {
             <input ref={pdfRef} type="file" accept="application/pdf" hidden onChange={onPdf} />
             {termoPdfNome && <span style={{ fontSize: 12.5, color: "#9B9891" }}>{termoPdfNome}</span>}
           </div>
+        </Field>
+        <Field label="Assinatura do termo" labelColor="#9B9891">
+          <PedirAssinaturaTodos data={data} save={save} />
+          <p style={{ fontSize: 11.5, color: "#9B9891", marginTop: 4 }}>Use isso depois de mudar o texto do termo, ou pra fazer todo mundo assinar com o dedo pela primeira vez (inclusive quem já tinha aceitado antes, sem assinatura).</p>
         </Field>
         <Field label="Regras do tatame (imagem, opcional)" labelColor="#9B9891">
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
