@@ -3563,8 +3563,8 @@ function VideosAdmin({ data, save }) {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <select style={{ ...inputStyleDark, width: 160 }} value={v.unidadeId || ""} onChange={(e) => atualizarUnidade(v.id, e.target.value)}>
-                <option value="">Todas as unidades</option>
-                {(data.unidades || []).map((u) => <option key={u.id} value={u.id}>{u.nome}</option>)}
+                <option value="" style={{ background: "#1A1D24", color: "#F5F3EC" }}>Todas as unidades</option>
+                {(data.unidades || []).map((u) => <option key={u.id} value={u.id} style={{ background: "#1A1D24", color: "#F5F3EC" }}>{u.nome}</option>)}
               </select>
               <ConfirmDelete onConfirm={() => remover(v.id)} />
             </div>
