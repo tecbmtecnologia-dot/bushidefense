@@ -3802,6 +3802,18 @@ function RegrasTatameAluno({ imagem }) {
   );
 }
 
+function GolpesProibidosCard({ pdf, pdfNome }) {
+  if (!pdf) return null;
+  return (
+    <Card style={{ marginBottom: 14, background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}>
+      <div style={{ ...blockTitleStyle, color: "#FFFFFF" }}>🚫 Golpes proibidos</div>
+      <a href={pdf} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "#C9A227" }}>
+        📄 Abrir PDF ({pdfNome || "golpes-proibidos.pdf"})
+      </a>
+    </Card>
+  );
+}
+
 function UnidadeForm({ initial, onSave, onCancel }) {
   const i = initial || {};
   const [nome, setNome] = useState(i.nome || "");
@@ -3921,15 +3933,19 @@ function ConfiguracoesAdmin({ data, save }) {
   const [mensagemAniversario, setMensagemAniversario] = useState(data.academia.mensagemAniversario || "");
   const [regrasTatame, setRegrasTatame] = useState(data.academia.regrasTatame || null);
   const [marcaDagua, setMarcaDagua] = useState(data.academia.marcaDagua || null);
+  const [golpesProibidosPdf, setGolpesProibidosPdf] = useState(data.academia.golpesProibidosPdf || null);
+  const [golpesProibidosPdfNome, setGolpesProibidosPdfNome] = useState(data.academia.golpesProibidosPdfNome || "");
   const logoRef = useRef(null);
   const pdfRef = useRef(null);
   const regrasRef = useRef(null);
   const marcaDaguaRef = useRef(null);
+  const golpesProibidosRef = useRef(null);
 
   const onLogo = (e) => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => setLogo(r.result); r.readAsDataURL(f); };
   const onPdf = (e) => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => { setTermoPdf(r.result); setTermoPdfNome(f.name); }; r.readAsDataURL(f); };
   const onRegras = (e) => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => setRegrasTatame(r.result); r.readAsDataURL(f); };
   const onMarcaDagua = (e) => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => setMarcaDagua(r.result); r.readAsDataURL(f); };
+  const onGolpesProibidos = (e) => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => { setGolpesProibidosPdf(r.result); setGolpesProibidosPdfNome(f.name); }; r.readAsDataURL(f); };
   const usarLocalizacaoAtual = () => {
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition((pos) => {
@@ -3943,7 +3959,7 @@ function ConfiguracoesAdmin({ data, save }) {
       academia: {
         ...data.academia, nome, chavePix, termoPadrao: termo, logo, termoPdf, termoPdfNome, senhaAdmin,
         endereco, latitude: latitude === "" ? null : Number(latitude), longitude: longitude === "" ? null : Number(longitude),
-        raioCheckin: Number(raioCheckin) || 150, instagram, facebook, whatsapp, mensagemAniversario, regrasTatame, marcaDagua,
+        raioCheckin: Number(raioCheckin) || 150, instagram, facebook, whatsapp, mensagemAniversario, regrasTatame, marcaDagua, golpesProibidosPdf, golpesProibidosPdfNome,
       },
     });
   };
@@ -4002,6 +4018,15 @@ function ConfiguracoesAdmin({ data, save }) {
             <input ref={marcaDaguaRef} type="file" accept="image/*" hidden onChange={onMarcaDagua} />
           </div>
           <p style={{ fontSize: 11.5, color: "#9B9891", marginTop: 4 }}>Aparece grande, no centro, bem clarinha, atrás do conteúdo de todo relatório em PDF. Funciona melhor com uma imagem clara/transparente (tipo um desenho de linha) — ela é invertida automaticamente pra ficar visível no papel branco. Se não enviar nada aqui, usamos o "Logo da equipe" pequeno no canto, como já era antes.</p>
+        </Field>
+        <Field label="Golpes proibidos (arquivo PDF, opcional)" labelColor="#9B9891">
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <Button variant="ghost" onClick={() => golpesProibidosRef.current?.click()} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>{golpesProibidosPdf ? "Trocar PDF" : "Enviar PDF"}</Button>
+            <input ref={golpesProibidosRef} type="file" accept="application/pdf" hidden onChange={onGolpesProibidos} />
+            {golpesProibidosPdfNome && <span style={{ fontSize: 12.5, color: "#9B9891" }}>{golpesProibidosPdfNome}</span>}
+            {golpesProibidosPdf && <Button variant="ghost" icon={X} onClick={() => { setGolpesProibidosPdf(null); setGolpesProibidosPdfNome(""); }} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>Remover</Button>}
+          </div>
+          <p style={{ fontSize: 11.5, color: "#9B9891", marginTop: 4 }}>Se enviado, aparece pro aluno na aba "Mais" e também no app do professor, como um link pra abrir o PDF.</p>
         </Field>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
           <Field label="Instagram" labelColor="#9B9891"><input style={inputStyle} value={instagram} onChange={(e) => setInstagram(e.target.value)} placeholder="https://instagram.com/..." /></Field>
@@ -4431,6 +4456,7 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
       {tab === "avisos" && (
         <div>
           <AvisosProfessor data={data} save={save} prof={prof} dark />
+          <GolpesProibidosCard pdf={data.academia.golpesProibidosPdf} pdfNome={data.academia.golpesProibidosPdfNome} />
         </div>
       )}
 
@@ -5005,6 +5031,9 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
           <div style={{ marginTop: 20 }}>
             <div style={{ ...blockTitleStyle, color: "#F5F3EC" }}>🛍️ Produtos à venda</div>
             <ProdutosProfessor data={data} save={save} prof={prof} />
+          </div>
+          <div style={{ marginTop: 20 }}>
+            <GolpesProibidosCard pdf={data.academia.golpesProibidosPdf} pdfNome={data.academia.golpesProibidosPdfNome} />
           </div>
         </div>
 
@@ -5586,6 +5615,8 @@ function AlunoDashboard({ data, save, aluno, onSair }) {
           <ProdutosAluno produtos={(data.produtos || []).filter((p) => p.professorId === aluno.professorId && p.ativo !== false)} />
 
           <RegrasTatameAluno imagem={data.academia.regrasTatame} />
+
+          <GolpesProibidosCard pdf={data.academia.golpesProibidosPdf} pdfNome={data.academia.golpesProibidosPdfNome} />
 
           {(data.academia.instagram || data.academia.facebook || data.academia.whatsapp) && (
             <Card style={{ marginBottom: 14, background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}>

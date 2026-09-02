@@ -8,6 +8,7 @@ const MAPS = {
     endereco: "endereco", latitude: "latitude", longitude: "longitude", raioCheckin: "raio_checkin",
     instagram: "instagram", facebook: "facebook", whatsapp: "whatsapp",
     mensagemAniversario: "mensagem_aniversario", regrasTatame: "regras_tatame", marcaDagua: "marca_dagua",
+    golpesProibidosPdf: "golpes_proibidos_pdf", golpesProibidosPdfNome: "golpes_proibidos_pdf_nome",
   },
   faixas: {
     id: "id", nome: "nome", cor: "cor", texto: "texto", borda: "borda", corPonta: "cor_ponta",
