@@ -2414,6 +2414,15 @@ function gerarRelatorioMensal(data, mes, onErro, alunosFiltro, tituloExtra) {
     .map((a) => { const plano = data.planos.find((p) => p.id === a.planoId); return `<tr><td>${a.nome}</td><td>${plano?.nome || "—"}</td><td>R$ ${(plano?.valor || 0).toFixed(2)}</td></tr>`; })
     .join("") || `<tr><td colspan="3">Nenhuma pendência no momento.</td></tr>`;
 
+  const dadosPagamentos = [
+    { nome: "Confirmados no mês", valor: confirmadosMes.length, cor: "#4ADE80" },
+    { nome: "Pendentes agora", valor: pendentesAtuais.length, cor: "#FF6B6B" },
+  ].filter((d) => d.valor > 0);
+  const graficoPagamentosHtml = dadosPagamentos.length
+    ? `<div class="section-title">Pagamentos confirmados x pendentes</div>
+       <div class="grafico-faixas">${svgPizza(dadosPagamentos)}${legendaPizzaHtml(dadosPagamentos)}</div>`
+    : "";
+
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>Relatório ${nomeMes} ${ano}</title>
     <style>${estiloRelatorioModerno()}</style></head>
     <body>
@@ -2428,6 +2437,7 @@ function gerarRelatorioMensal(data, mes, onErro, alunosFiltro, tituloExtra) {
           <div class="stat"><div class="label">Receita recebida no mês</div><div class="value">R$ ${totalConfirmado.toFixed(2)}</div></div>
           <div class="stat"><div class="label">Receita pendente agora</div><div class="value">R$ ${totalPendente.toFixed(2)}</div></div>
         </div>
+        ${graficoPagamentosHtml}
         <div class="section-title">Pagamentos confirmados no mês</div>
         <table><thead><tr><th>Aluno</th><th>Data</th><th>Valor</th></tr></thead><tbody>${linhasConfirmados}</tbody></table>
         <div class="section-title">Pagamentos pendentes atualmente</div>
