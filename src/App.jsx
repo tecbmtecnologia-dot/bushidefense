@@ -4717,17 +4717,18 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
 
   useEffect(() => {
     if (!data.avisos || data.avisos.length === 0) return;
+    const avisosDoProfessor = data.avisos.filter((a) => !a.professorId || a.professorId === prof.id);
     const chaveVistos = `qg-avisos-vistos-prof-${prof.id}`;
     let vistos = [];
     try { vistos = JSON.parse(localStorage.getItem(chaveVistos) || "[]"); } catch (_) {}
-    const novos = data.avisos.filter((a) => !vistos.includes(a.id));
+    const novos = avisosDoProfessor.filter((a) => !vistos.includes(a.id));
     if (novos.length > 0) {
       if (typeof Notification !== "undefined") {
         const notificar = () => novos.forEach((a) => { try { new Notification(a.titulo, { body: a.mensagem || "", icon: data.academia.logo || undefined }); } catch (_) {} });
         if (Notification.permission === "granted") notificar();
         else if (Notification.permission !== "denied") Notification.requestPermission().then((perm) => { if (perm === "granted") notificar(); });
       }
-      try { localStorage.setItem(chaveVistos, JSON.stringify(data.avisos.map((a) => a.id))); } catch (_) {}
+      try { localStorage.setItem(chaveVistos, JSON.stringify(avisosDoProfessor.map((a) => a.id))); } catch (_) {}
     }
   }, [data.avisos, prof.id]);
 
@@ -5423,17 +5424,18 @@ function AlunoDashboard({ data, save, aluno, onSair }) {
 
   useEffect(() => {
     if (!data.avisos || data.avisos.length === 0) return;
+    const avisosDoAluno = data.avisos.filter((a) => !a.professorId || a.professorId === aluno.professorId);
     const chaveVistos = `qg-avisos-vistos-${aluno.id}`;
     let vistos = [];
     try { vistos = JSON.parse(localStorage.getItem(chaveVistos) || "[]"); } catch (_) {}
-    const novos = data.avisos.filter((a) => !vistos.includes(a.id));
+    const novos = avisosDoAluno.filter((a) => !vistos.includes(a.id));
     if (novos.length > 0) {
       if (typeof Notification !== "undefined") {
         const notificar = () => novos.forEach((a) => { try { new Notification(a.titulo, { body: a.mensagem || "", icon: data.academia.logo || undefined }); } catch (_) {} });
         if (Notification.permission === "granted") notificar();
         else if (Notification.permission !== "denied") Notification.requestPermission().then((perm) => { if (perm === "granted") notificar(); });
       }
-      try { localStorage.setItem(chaveVistos, JSON.stringify(data.avisos.map((a) => a.id))); } catch (_) {}
+      try { localStorage.setItem(chaveVistos, JSON.stringify(avisosDoAluno.map((a) => a.id))); } catch (_) {}
     }
   }, [data.avisos, aluno.id]);
 
