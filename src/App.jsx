@@ -3863,17 +3863,35 @@ function slugTexto(str) {
 
 function SalaReuniaoProfessores({ data, prof }) {
   const [aberta, setAberta] = useState(false);
+  const [linkCopiado, setLinkCopiado] = useState(false);
   const roomName = `ciapaulista-reuniao-${slugTexto(data.academia.nome) || "equipe"}-${(data.academia.id || "sala").replace(/-/g, "").slice(0, 8)}`;
-  const jitsiUrl = `https://meet.jit.si/${roomName}#config.prejoinPageEnabled=true&config.disableDeepLinking=true&userInfo.displayName="${encodeURIComponent(prof?.nome || "Professor")}"`;
+  const roomBase = `https://meet.jit.si/${roomName}#config.prejoinPageEnabled=true&config.disableDeepLinking=true`;
+  const jitsiUrl = `${roomBase}&userInfo.displayName="${encodeURIComponent(prof?.nome || "Professor")}"`;
+
+  const convidar = async () => {
+    if (navigator.share) {
+      try { await navigator.share({ title: "Reunião de vídeo", text: "Entre na reunião pelo link:", url: roomBase }); return; } catch (_) { /* usuário cancelou o compartilhamento */ }
+    }
+    try {
+      await navigator.clipboard.writeText(roomBase);
+      setLinkCopiado(true);
+      setTimeout(() => setLinkCopiado(false), 2500);
+    } catch (_) { /* clipboard indisponível */ }
+  };
 
   return (
     <>
       <Card dark style={{ background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}>
         <div style={{ ...blockTitleStyle, color: "#FFFFFF" }}>🎥 Reunião de professores</div>
         <p style={{ fontSize: 12.5, color: "#9B9891", marginBottom: 12 }}>
-          Sala de vídeo chamada só pra equipe de professores. Quem entrar ao mesmo tempo cai na mesma reunião — sem precisar marcar link nem app externo.
+          Sala de vídeo chamada pra equipe de professores. Quem entrar ao mesmo tempo cai na mesma reunião — sem precisar marcar link nem app externo. Quer chamar algum aluno também? Envie o link pra ele — não precisa ter o app instalado, abre no navegador normal.
         </p>
-        <Button onClick={() => setAberta(true)} style={{ width: "100%", justifyContent: "center" }}>Entrar na reunião</Button>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <Button onClick={() => setAberta(true)} style={{ flex: "1 1 160px", justifyContent: "center" }}>Entrar na reunião</Button>
+          <Button variant="ghost" icon={Share} onClick={convidar} style={{ flex: "1 1 160px", justifyContent: "center", color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>
+            {linkCopiado ? "Link copiado!" : "Convidar (link)"}
+          </Button>
+        </div>
       </Card>
 
       {aberta && (
