@@ -1734,8 +1734,8 @@ function AdminView({ data, save, onSairAdmin }) {
           <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
             <Button icon={Plus} onClick={() => setNovoProf(true)}>Novo professor</Button>
           </div>
-          {novoProf && <PersonForm tipo="professor" faixas={data.faixas} onCancel={() => setNovoProf(false)} onSave={addProf} />}
-          {editandoProf && <PersonForm tipo="professor" faixas={data.faixas} initial={editandoProf} onCancel={() => setEditandoProf(null)} onSave={(form) => editarProf(editandoProf.id, form)} />}
+          {novoProf && <PersonForm tipo="professor" faixas={data.faixas} unidades={data.unidades} onCancel={() => setNovoProf(false)} onSave={addProf} />}
+          {editandoProf && <PersonForm tipo="professor" faixas={data.faixas} unidades={data.unidades} initial={editandoProf} onCancel={() => setEditandoProf(null)} onSave={(form) => editarProf(editandoProf.id, form)} />}
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {data.professores.map((p) => (
               <Card dark key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: 12, flexWrap: "wrap", gap: 8 }}>
@@ -1851,7 +1851,7 @@ function PersonForm({ tipo, initial, planos, faixas, professores, unidades, turm
     } else {
       onSave({
         nome, email, especialidade, telefone, endereco, faixaId, dataNascimento,
-        grau: Math.min(Number(grau) || 0, grausMaxSelecionado), senha: senha || randomSenha(),
+        grau: Math.min(Number(grau) || 0, grausMaxSelecionado), senha: senha || randomSenha(), unidadeId,
       });
     }
   };
@@ -1924,6 +1924,13 @@ function PersonForm({ tipo, initial, planos, faixas, professores, unidades, turm
             <Field label="Telefone / contato"><input style={inputStyle} value={telefone} onChange={(e) => setTelefone(e.target.value)} /></Field>
             <Field label="Endereço"><input style={inputStyle} value={endereco} onChange={(e) => setEndereco(e.target.value)} /></Field>
             <Field label="Especialidade"><input style={inputStyle} value={especialidade} onChange={(e) => setEspecialidade(e.target.value)} /></Field>
+            <Field label="Unidade onde dá aula">
+              <select style={inputStyle} value={unidadeId} onChange={(e) => setUnidadeId(e.target.value)}>
+                <option value="">QG (padrão)</option>
+                {(unidades || []).map((u) => <option key={u.id} value={u.id}>{u.nome}</option>)}
+              </select>
+              <p style={{ fontSize: 11, color: "#8A8574", marginTop: 4 }}>Ao criar turmas, esse professor só vai poder cadastrar pra essa unidade.</p>
+            </Field>
             <Field label="Data de nascimento"><input type="date" style={inputStyle} value={dataNascimento} onChange={(e) => setDataNascimento(e.target.value)} /></Field>
             <Field label="Faixa">
               <select style={inputStyle} value={faixaId} onChange={(e) => setFaixaId(e.target.value)}>
@@ -1948,13 +1955,13 @@ function PersonForm({ tipo, initial, planos, faixas, professores, unidades, turm
   );
 }
 
-function TurmaForm({ initial, unidades, onSave, onCancel }) {
+function TurmaForm({ initial, unidades, unidadeFixa, onSave, onCancel }) {
   const i = initial || {};
   const [nome, setNome] = useState(i.nome || "");
   const [dias, setDias] = useState(Array.isArray(i.dias) ? i.dias : (i.dias ? String(i.dias).split("/") : []));
   const [horario, setHorario] = useState(i.horario || "");
   const [horarioFim, setHorarioFim] = useState(i.horarioFim || "");
-  const [unidadeId, setUnidadeId] = useState(i.unidadeId || "");
+  const [unidadeId, setUnidadeId] = useState(unidadeFixa ? (unidadeFixa.id || "") : (i.unidadeId || ""));
   const toggleDia = (d) => setDias((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]));
   const submit = () => { if (!nome.trim()) return; onSave({ nome, dias, horario, horarioFim, unidadeId }); };
   return (
@@ -1965,12 +1972,19 @@ function TurmaForm({ initial, unidades, onSave, onCancel }) {
         <Field label="Horário de término"><input style={inputStyle} value={horarioFim} onChange={(e) => setHorarioFim(e.target.value)} placeholder="20:00" /></Field>
       </div>
       <div style={{ marginTop: 10 }}>
-        <Field label="Unidade (deixe em branco para QG padrão)">
-          <select style={inputStyle} value={unidadeId} onChange={(e) => setUnidadeId(e.target.value)}>
-            <option value="">QG (padrão)</option>
-            {(unidades || []).map((u) => <option key={u.id} value={u.id}>{u.nome}</option>)}
-          </select>
-        </Field>
+        {unidadeFixa !== undefined ? (
+          <Field label="Unidade">
+            <div style={{ ...inputStyle, background: "#F0EDE3", color: "#5A5648", display: "flex", alignItems: "center" }}>{unidadeFixa ? unidadeFixa.nome : "QG (padrão)"}</div>
+            <p style={{ fontSize: 11, color: "#8A8574", marginTop: 4 }}>Você só pode cadastrar turmas pra sua própria unidade. Se isso estiver errado, peça pra administração ajustar a unidade no seu cadastro.</p>
+          </Field>
+        ) : (
+          <Field label="Unidade (deixe em branco para QG padrão)">
+            <select style={inputStyle} value={unidadeId} onChange={(e) => setUnidadeId(e.target.value)}>
+              <option value="">QG (padrão)</option>
+              {(unidades || []).map((u) => <option key={u.id} value={u.id}>{u.nome}</option>)}
+            </select>
+          </Field>
+        )}
       </div>
       <div style={{ marginTop: 10 }}>
         <Field label="Dias da semana">
@@ -3711,6 +3725,7 @@ function TurmasProfessor({ data, save, prof }) {
   const [nova, setNova] = useState(false);
   const [editando, setEditando] = useState(null);
   const minhasTurmas = data.turmas.filter((t) => t.professorId === prof.id);
+  const unidadeDoProfessor = (data.unidades || []).find((u) => u.id === prof.unidadeId) || null;
 
   const adicionar = async (form) => {
     const turma = { id: uid(), ...form, professorId: prof.id };
@@ -3732,8 +3747,8 @@ function TurmasProfessor({ data, save, prof }) {
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
         <Button icon={Plus} onClick={() => setNova(true)}>Nova turma</Button>
       </div>
-      {nova && <TurmaForm unidades={data.unidades} onCancel={() => setNova(false)} onSave={adicionar} />}
-      {editando && <TurmaForm unidades={data.unidades} initial={editando} onCancel={() => setEditando(null)} onSave={(form) => editar(editando.id, form)} />}
+      {nova && <TurmaForm unidadeFixa={unidadeDoProfessor} onCancel={() => setNova(false)} onSave={adicionar} />}
+      {editando && <TurmaForm unidadeFixa={unidadeDoProfessor} initial={editando} onCancel={() => setEditando(null)} onSave={(form) => editar(editando.id, form)} />}
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {minhasTurmas.map((t) => {
           const unidadeDaTurma = (data.unidades || []).find((u) => u.id === t.unidadeId);
