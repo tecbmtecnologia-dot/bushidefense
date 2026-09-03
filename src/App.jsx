@@ -3861,10 +3861,10 @@ function slugTexto(str) {
     .replace(/(^-+|-+$)/g, "");
 }
 
-function SalaReuniaoProfessores({ data }) {
+function SalaReuniaoProfessores({ data, prof }) {
   const [aberta, setAberta] = useState(false);
   const roomName = `ciapaulista-reuniao-${slugTexto(data.academia.nome) || "equipe"}-${(data.academia.id || "sala").replace(/-/g, "").slice(0, 8)}`;
-  const jitsiUrl = `https://meet.jit.si/${roomName}#config.prejoinPageEnabled=true&config.disableDeepLinking=true&userInfo.displayName="${encodeURIComponent(data.academia.nome || "Professor")}"`;
+  const jitsiUrl = `https://meet.jit.si/${roomName}#config.prejoinPageEnabled=true&config.disableDeepLinking=true&userInfo.displayName="${encodeURIComponent(prof?.nome || "Professor")}"`;
 
   return (
     <>
@@ -4629,7 +4629,7 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
 
       {tab === "produtos" && <ProdutosProfessor data={data} save={save} prof={prof} />}
 
-      {tab === "reuniao" && <SalaReuniaoProfessores data={data} />}
+      {tab === "reuniao" && <SalaReuniaoProfessores data={data} prof={prof} />}
 
       {tab === "perfil" && (
         <Card dark>
@@ -5201,7 +5201,7 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
             <ProdutosProfessor data={data} save={save} prof={prof} />
           </div>
           <div style={{ marginTop: 20 }}>
-            <SalaReuniaoProfessores data={data} />
+            <SalaReuniaoProfessores data={data} prof={prof} />
           </div>
           <div style={{ marginTop: 20 }}>
             <GolpesProibidosCard pdf={data.academia.golpesProibidosPdf} pdfNome={data.academia.golpesProibidosPdfNome} />
