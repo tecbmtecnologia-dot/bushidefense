@@ -3855,6 +3855,45 @@ function GolpesProibidosCard({ pdf, pdfNome }) {
   );
 }
 
+function slugTexto(str) {
+  return normalizarTexto(str)
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-+|-+$)/g, "");
+}
+
+function SalaReuniaoProfessores({ data }) {
+  const [aberta, setAberta] = useState(false);
+  const roomName = `ciapaulista-reuniao-${slugTexto(data.academia.nome) || "equipe"}-${(data.academia.id || "sala").replace(/-/g, "").slice(0, 8)}`;
+  const jitsiUrl = `https://meet.jit.si/${roomName}#config.prejoinPageEnabled=true&config.disableDeepLinking=true&userInfo.displayName="${encodeURIComponent(data.academia.nome || "Professor")}"`;
+
+  return (
+    <>
+      <Card dark style={{ background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}>
+        <div style={{ ...blockTitleStyle, color: "#FFFFFF" }}>🎥 Reunião de professores</div>
+        <p style={{ fontSize: 12.5, color: "#9B9891", marginBottom: 12 }}>
+          Sala de vídeo chamada só pra equipe de professores. Quem entrar ao mesmo tempo cai na mesma reunião — sem precisar marcar link nem app externo.
+        </p>
+        <Button onClick={() => setAberta(true)} style={{ width: "100%", justifyContent: "center" }}>Entrar na reunião</Button>
+      </Card>
+
+      {aberta && (
+        <div style={{ position: "fixed", inset: 0, background: "#000", zIndex: 9999, display: "flex", flexDirection: "column" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", background: "#111318", borderBottom: "1px solid rgba(255,255,255,0.1)", flexShrink: 0 }}>
+            <div style={{ color: "#F5F3EC", fontSize: 13, fontWeight: 600 }}>🎥 Reunião de professores</div>
+            <button onClick={() => setAberta(false)} style={{ background: "rgba(255,255,255,0.1)", border: "none", borderRadius: 6, color: "#F5F3EC", padding: "7px 14px", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>Sair ✕</button>
+          </div>
+          <iframe
+            src={jitsiUrl}
+            allow="camera; microphone; fullscreen; display-capture; autoplay"
+            style={{ flex: 1, border: "none", width: "100%" }}
+            title="Reunião de professores"
+          />
+        </div>
+      )}
+    </>
+  );
+}
+
 function UnidadeForm({ initial, onSave, onCancel }) {
   const i = initial || {};
   const [nome, setNome] = useState(i.nome || "");
@@ -4297,6 +4336,7 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
     { id: "avisos", label: "Avisos" },
     { id: "videos", label: "Vídeos" },
     { id: "produtos", label: "Produtos" },
+    { id: "reuniao", label: "Reunião" },
     { id: "perfil", label: "Meu Perfil" },
   ];
 
@@ -4322,7 +4362,7 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
     });
 
   const iconesTabs = {
-    dashboard: "📊", inicio: "🏠", alunos: "🤼", checkins: "📍", turmas: "📅", financeiro: "💰", relatorios: "📑", avisos: "🔔", videos: "🎬", produtos: "🛍️", perfil: "👤",
+    dashboard: "📊", inicio: "🏠", alunos: "🤼", checkins: "📍", turmas: "📅", financeiro: "💰", relatorios: "📑", avisos: "🔔", videos: "🎬", produtos: "🛍️", reuniao: "🎥", perfil: "👤",
   };
 
   const [refFullBleed, estiloFullBleed] = useFullBleed();
@@ -4588,6 +4628,8 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
       {tab === "videos" && <VideosProfessor data={data} save={save} prof={prof} />}
 
       {tab === "produtos" && <ProdutosProfessor data={data} save={save} prof={prof} />}
+
+      {tab === "reuniao" && <SalaReuniaoProfessores data={data} />}
 
       {tab === "perfil" && (
         <Card dark>
@@ -5157,6 +5199,9 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
           <div style={{ marginTop: 20 }}>
             <div style={{ ...blockTitleStyle, color: "#F5F3EC" }}>🛍️ Produtos à venda</div>
             <ProdutosProfessor data={data} save={save} prof={prof} />
+          </div>
+          <div style={{ marginTop: 20 }}>
+            <SalaReuniaoProfessores data={data} />
           </div>
           <div style={{ marginTop: 20 }}>
             <GolpesProibidosCard pdf={data.academia.golpesProibidosPdf} pdfNome={data.academia.golpesProibidosPdfNome} />
