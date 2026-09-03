@@ -1200,7 +1200,7 @@ function RelatoriosProfessor({ data, prof, meusAlunos }) {
           <CartaoRelatorio dark corIcone="#EAF7EE" icone="📍" tag="Check-ins" titulo="Check-ins por data"
             descricao="Quais dos seus alunos fizeram check-in em um dia específico." botao={{ variant: "gold" }}
             onClick={() => { setErro(""); gerarRelatorioCheckins(data, dataCheckins, setErro, meusAlunos, prof.nome); }}>
-            <input type="date" style={inputStyle} value={dataCheckins} onChange={(e) => setDataCheckins(e.target.value)} />
+            <input type="date" style={{ ...inputStyle, maxWidth: "100%" }} value={dataCheckins} onChange={(e) => setDataCheckins(e.target.value)} />
           </CartaoRelatorio>
         )}
 
@@ -1208,7 +1208,7 @@ function RelatoriosProfessor({ data, prof, meusAlunos }) {
           <CartaoRelatorio dark corIcone="#F1EAFF" icone="💰" tag="Financeiro" titulo="Relatório mensal"
             descricao="Pagamentos confirmados e pendências dos seus alunos no mês." botao={{ variant: "gold" }}
             onClick={() => { setErro(""); gerarRelatorioMensal(data, mesFinanceiro, setErro, meusAlunos, prof.nome); }}>
-            <input type="month" style={inputStyle} value={mesFinanceiro} onChange={(e) => setMesFinanceiro(e.target.value)} />
+            <input type="month" style={{ ...inputStyle, maxWidth: "100%" }} value={mesFinanceiro} onChange={(e) => setMesFinanceiro(e.target.value)} />
           </CartaoRelatorio>
         )}
 
@@ -1379,7 +1379,7 @@ function RelatoriosAdmin({ data }) {
           <CartaoRelatorio corIcone="#EAF7EE" icone="📍" tag="Check-ins" titulo="Check-ins por data"
             descricao="Quem fez check-in em um dia específico, de todas as turmas."
             onClick={() => { setErro(""); gerarRelatorioCheckins(data, dataCheckins, setErro); }}>
-            <input type="date" style={inputStyle} value={dataCheckins} onChange={(e) => setDataCheckins(e.target.value)} />
+            <input type="date" style={{ ...inputStyle, maxWidth: "100%" }} value={dataCheckins} onChange={(e) => setDataCheckins(e.target.value)} />
           </CartaoRelatorio>
         )}
 
@@ -1402,7 +1402,7 @@ function RelatoriosAdmin({ data }) {
           <CartaoRelatorio corIcone="#F1EAFF" icone="💰" tag="Financeiro" titulo="Relatório mensal"
             descricao="Pagamentos confirmados e pendências do mês selecionado." botao={{ variant: "gold" }}
             onClick={() => { setErro(""); gerarRelatorioMensal(data, mesFinanceiro, setErro); }}>
-            <input type="month" style={inputStyle} value={mesFinanceiro} onChange={(e) => setMesFinanceiro(e.target.value)} />
+            <input type="month" style={{ ...inputStyle, maxWidth: "100%" }} value={mesFinanceiro} onChange={(e) => setMesFinanceiro(e.target.value)} />
           </CartaoRelatorio>
         )}
 
