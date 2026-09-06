@@ -149,26 +149,41 @@ export async function loadAll() {
   return { academia, faixas, planos, turmas, professores, alunos, sessoes, checkins, avisos, videos, unidades, produtos };
 }
 
-export async function saveAll(next) {
-  const academiaRow = toDb("academia", next.academia);
-  const faixasComOrdem = next.faixas.map((f, i) => ({ ...f, ordem: i }));
-  const todosPagamentos = next.alunos.flatMap((a) => (a.pagamentos || []).map((p) => ({ ...p, alunoId: a.id })));
+/*
+ * Só sincroniza no banco as partes de `next` que realmente mudaram em relação a `anterior`.
+ * Cada tela do app sempre chama save({ ...data, algumaCoisa }) — ou seja, todo campo que não
+ * foi tocado continua sendo a MESMA referência de array/objeto de antes. Por isso dá pra usar
+ * comparação de referência (!==) pra saber o que mudou, sem precisar alterar nenhuma das telas.
+ * Isso evita mandar ~13 tabelas inteiras pro banco toda vez que qualquer coisa é salva.
+ */
+export async function saveAll(next, anterior) {
+  const mudou = (chave) => !anterior || next[chave] !== anterior[chave];
 
-  const tarefas = [
-    { nome: "academia", fn: () => pg.update("academia", next.academia.id, academiaRow) },
-    { nome: "faixas", fn: () => syncTable("faixas", faixasComOrdem) },
-    { nome: "planos", fn: () => syncTable("planos", next.planos) },
-    { nome: "turmas", fn: () => syncTable("turmas", next.turmas) },
-    { nome: "professores", fn: () => syncTable("professores", next.professores) },
-    { nome: "alunos", fn: () => syncTable("alunos", next.alunos) },
-    { nome: "sessoes_checkin", fn: () => syncTable("sessoes_checkin", next.sessoes) },
-    { nome: "checkins", fn: () => syncTable("checkins", next.checkins) },
-    { nome: "pagamentos", fn: () => syncTable("pagamentos", todosPagamentos) },
-    { nome: "avisos", fn: () => syncTable("avisos", next.avisos || []) },
-    { nome: "videos", fn: () => syncTable("videos", next.videos || []) },
-    { nome: "unidades", fn: () => syncTable("unidades", next.unidades || []) },
-    { nome: "produtos", fn: () => syncTable("produtos", next.produtos || []) },
-  ];
+  const tarefas = [];
+  if (mudou("academia")) {
+    tarefas.push({ nome: "academia", fn: () => pg.update("academia", next.academia.id, toDb("academia", next.academia)) });
+  }
+  if (mudou("faixas")) {
+    const faixasComOrdem = next.faixas.map((f, i) => ({ ...f, ordem: i }));
+    tarefas.push({ nome: "faixas", fn: () => syncTable("faixas", faixasComOrdem) });
+  }
+  if (mudou("planos")) tarefas.push({ nome: "planos", fn: () => syncTable("planos", next.planos) });
+  if (mudou("turmas")) tarefas.push({ nome: "turmas", fn: () => syncTable("turmas", next.turmas) });
+  if (mudou("professores")) tarefas.push({ nome: "professores", fn: () => syncTable("professores", next.professores) });
+  if (mudou("alunos")) {
+    tarefas.push({ nome: "alunos", fn: () => syncTable("alunos", next.alunos) });
+    // Pagamentos ficam dentro de cada aluno, então reenviamos junto sempre que o array de alunos mudar.
+    const todosPagamentos = next.alunos.flatMap((a) => (a.pagamentos || []).map((p) => ({ ...p, alunoId: a.id })));
+    tarefas.push({ nome: "pagamentos", fn: () => syncTable("pagamentos", todosPagamentos) });
+  }
+  if (mudou("sessoes")) tarefas.push({ nome: "sessoes_checkin", fn: () => syncTable("sessoes_checkin", next.sessoes) });
+  if (mudou("checkins")) tarefas.push({ nome: "checkins", fn: () => syncTable("checkins", next.checkins) });
+  if (mudou("avisos")) tarefas.push({ nome: "avisos", fn: () => syncTable("avisos", next.avisos || []) });
+  if (mudou("videos")) tarefas.push({ nome: "videos", fn: () => syncTable("videos", next.videos || []) });
+  if (mudou("unidades")) tarefas.push({ nome: "unidades", fn: () => syncTable("unidades", next.unidades || []) });
+  if (mudou("produtos")) tarefas.push({ nome: "produtos", fn: () => syncTable("produtos", next.produtos || []) });
+
+  if (!tarefas.length) return;
 
   const resultados = await Promise.allSettled(tarefas.map((t) => t.fn()));
   const erros = resultados

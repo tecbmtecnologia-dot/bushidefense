@@ -952,9 +952,10 @@ export default function App({ modo = "admin" }) {
   }, [data]);
 
   const save = async (next) => {
+    const anterior = data;
     setData(next);
     try {
-      await saveAll(next);
+      await saveAll(next, anterior);
     } catch (e) {
       setErroConexao(e?.message || String(e));
     }
