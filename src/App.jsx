@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid } from "recharts";
 import { Shield, User, Users, QrCode, Camera, Check, Plus, Trash2, X, Award, CalendarCheck, CreditCard, ChevronRight, LogOut, Gift, RefreshCw, Download, Share } from "lucide-react";
-import { loadAll, saveAll, salvarInscricaoPush, notificarPush } from "./db.js";
+import { loadAll, saveAll, saveAlunos, salvarInscricaoPush, notificarPush } from "./db.js";
 import { uploadArquivo, removerArquivo, pg } from "./supabaseClient.js";
 
 const VAPID_PUBLIC_KEY = "BGKxQaeijzD265ey6QLdzFQDzzl9zZMthYYjlkAFKvsr-AtpsqrcanHs96CePRDF9wU6_N0z8-IU1PFVg3IpB6I";
@@ -39,6 +39,28 @@ const DIAS_SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const formatDias = (dias) => (Array.isArray(dias) ? dias.join("/") : (dias || ""));
 
 const uid = () => (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : "id-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+
+// Número de cadastro sequencial do aluno (tipo "matrícula" mesmo, um código único por pessoa).
+const proximoCodigoAluno = (alunos) => Math.max(0, ...alunos.map((a) => a.codigo || 0)) + 1;
+const formatarCodigoAluno = (n) => "Nº " + String(n).padStart(3, "0");
+// Preenche o código só de quem ainda não tem (alunos já cadastrados antes dessa função existir),
+// dando os números mais baixos pra quem matriculou primeiro. Roda uma única vez, na carga inicial.
+function atribuirCodigosFaltantes(alunos) {
+  if (alunos.every((a) => a.codigo)) return alunos;
+  const usados = new Set(alunos.filter((a) => a.codigo).map((a) => a.codigo));
+  let proximo = 1;
+  const codigosPorId = {};
+  [...alunos]
+    .sort((a, b) => (a.matricula || "9999-99-99").localeCompare(b.matricula || "9999-99-99") || a.nome.localeCompare(b.nome))
+    .forEach((a) => {
+      if (a.codigo) return;
+      while (usados.has(proximo)) proximo++;
+      codigosPorId[a.id] = proximo;
+      usados.add(proximo);
+      proximo++;
+    });
+  return alunos.map((a) => (codigosPorId[a.id] ? { ...a, codigo: codigosPorId[a.id] } : a));
+}
 // Navegadores modernos bloqueiam abrir um link "data:" direto em nova aba (por segurança).
 // Como PDFs enviados no admin ficam guardados como data URL, convertemos pra um blob antes de abrir.
 function abrirPdfDataUrl(dataUrl) {
@@ -930,6 +952,10 @@ export default function App({ modo = "admin" }) {
     setErroConexao(null);
     try {
       const fresh = await loadAll();
+      if (fresh.alunos.some((a) => !a.codigo)) {
+        fresh.alunos = atribuirCodigosFaltantes(fresh.alunos);
+        try { await saveAlunos(fresh.alunos); } catch (_) { /* atualiza a lista mesmo assim; tenta salvar de novo na próxima carga */ }
+      }
       setData(fresh);
     } catch (e) {
       setErroConexao(e?.message || String(e));
@@ -1544,7 +1570,7 @@ function AdminView({ data, save, onSairAdmin }) {
   const termosPendentes = data.alunos.filter((a) => !a.termoAceito && !a.termoAssinadoManual).length;
 
   const addAluno = async (form) => {
-    const a = { id: uid(), tipo: "aluno", matricula: hoje(), ultimoPagamento: null, foto: null, pagamentos: [], checkinsDesdeGraduacao: 0, primeiroAcesso: true, termoAceito: false, termoAceitoEm: null, ativo: true, ...form };
+    const a = { id: uid(), tipo: "aluno", matricula: hoje(), codigo: proximoCodigoAluno(data.alunos), ultimoPagamento: null, foto: null, pagamentos: [], checkinsDesdeGraduacao: 0, primeiroAcesso: true, termoAceito: false, termoAceitoEm: null, ativo: true, ...form };
     await save({ ...data, alunos: [...data.alunos, a] });
     setNovoAluno(false);
   };
@@ -1697,7 +1723,7 @@ function AdminView({ data, save, onSairAdmin }) {
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <Avatar foto={a.foto} nome={a.nome} />
                     <div>
-                      <div style={{ fontWeight: 600, fontSize: 14, color: "#F5F3EC" }}>{a.nome}{a.apelido && <span style={{ fontWeight: 400, color: "#9B9891" }}> "{a.apelido}"</span>}</div>
+                      <div style={{ fontWeight: 600, fontSize: 14, color: "#F5F3EC" }}>{a.codigo && <span style={{ color: "#C9A227", fontWeight: 700 }}>{formatarCodigoAluno(a.codigo)} · </span>}{a.nome}{a.apelido && <span style={{ fontWeight: 400, color: "#9B9891" }}> "{a.apelido}"</span>}</div>
                       <BeltBar faixas={data.faixas} faixaId={a.faixaId} grau={a.grau} textColor="#F5F3EC" />
                       <div style={{ fontSize: 11, color: "#9B9891" }}>
                         {professorVinculado && `Professor: ${professorVinculado.nome}`}
@@ -1871,6 +1897,9 @@ function PersonForm({ tipo, initial, planos, faixas, professores, unidades, turm
 
   return (
     <Card style={{ marginBottom: 12 }}>
+      {tipo === "aluno" && i.codigo && (
+        <div style={{ fontSize: 12.5, fontWeight: 700, color: "#8A8574", marginBottom: 10 }}>{formatarCodigoAluno(i.codigo)} <span style={{ fontWeight: 400 }}>(número de cadastro, gerado automaticamente)</span></div>
+      )}
       {tipo === "aluno" && i.foto && (
         <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
           <img src={i.foto} alt={i.nome} style={{ width: 96, height: 96, borderRadius: 14, objectFit: "cover", border: "2px solid #12213B" }} />
@@ -2561,6 +2590,7 @@ function gerarRelatorioListaAlunos(data, onErro, alunosFiltro, tituloExtra) {
       const { emDia } = statusPagamento(a, data.planos);
       const categoria = categoriaEtaria(a.dataNascimento) || "—";
       return `<tr>
+        <td>${a.codigo ? formatarCodigoAluno(a.codigo) : "—"}</td>
         <td>${a.nome}${a.apelido ? ` "${a.apelido}"` : ""}</td>
         <td>${faixa ? `${faixa.nome}${faixa.grausMax > 0 ? ` (${a.grau}º)` : ""}` : "—"}</td>
         <td>${categoria}</td>
@@ -2570,7 +2600,7 @@ function gerarRelatorioListaAlunos(data, onErro, alunosFiltro, tituloExtra) {
         <td>${emDia ? '<span class="pill pill-ok">Em dia</span>' : '<span class="pill pill-pendente">Pendente</span>'}</td>
       </tr>`;
     })
-    .join("") || `<tr><td colspan="7">Nenhum aluno cadastrado.</td></tr>`;
+    .join("") || `<tr><td colspan="8">Nenhum aluno cadastrado.</td></tr>`;
 
   const porFaixa = data.faixas
     .map((f) => ({ nome: f.nome, cor: f.cor, valor: alunosBase.filter((a) => a.faixaId === f.id).length }))
@@ -2600,7 +2630,7 @@ function gerarRelatorioListaAlunos(data, onErro, alunosFiltro, tituloExtra) {
       </div>
       ${graficoFaixasHtml}
       <div class="section-title">Cadastro completo</div>
-      <table><thead><tr><th>Aluno</th><th>Faixa</th><th>Categoria</th><th>Telefone</th><th>Professor</th><th>Plano</th><th>Pagamento</th></tr></thead><tbody>${linhas}</tbody></table>
+      <table><thead><tr><th>Nº</th><th>Aluno</th><th>Faixa</th><th>Categoria</th><th>Telefone</th><th>Professor</th><th>Plano</th><th>Pagamento</th></tr></thead><tbody>${linhas}</tbody></table>
       ${rodapeRelatorioModerno()}
     </body></html>`;
 
@@ -4688,7 +4718,7 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
                   <div style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }} onClick={() => alternarExpandido(a.id)}>
                     <Avatar foto={a.foto} nome={a.nome} />
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 600, fontSize: 14, color: "#F5F3EC" }}>{a.nome}{a.apelido && <span style={{ fontWeight: 400, color: "#9B9891" }}> "{a.apelido}"</span>}</div>
+                      <div style={{ fontWeight: 600, fontSize: 14, color: "#F5F3EC" }}>{a.codigo && <span style={{ color: "#C9A227", fontWeight: 700 }}>{formatarCodigoAluno(a.codigo)} · </span>}{a.nome}{a.apelido && <span style={{ fontWeight: 400, color: "#9B9891" }}> "{a.apelido}"</span>}</div>
                       <BeltBar faixas={data.faixas} faixaId={a.faixaId} grau={a.grau} textColor="#F5F3EC" />
                       {!aberto && (
                         <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
@@ -5016,7 +5046,7 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
   const [alunosExpandidos, setAlunosExpandidos] = useState({});
   const alternarExpandido = (id) => setAlunosExpandidos((prev) => ({ ...prev, [id]: !prev[id] }));
   const addAlunoProf = async (form) => {
-    const a = { id: uid(), tipo: "aluno", matricula: hoje(), ultimoPagamento: null, foto: null, pagamentos: [], checkinsDesdeGraduacao: 0, primeiroAcesso: true, termoAceito: false, termoAceitoEm: null, ativo: true, ...form, professorId: prof.id };
+    const a = { id: uid(), tipo: "aluno", matricula: hoje(), codigo: proximoCodigoAluno(data.alunos), ultimoPagamento: null, foto: null, pagamentos: [], checkinsDesdeGraduacao: 0, primeiroAcesso: true, termoAceito: false, termoAceitoEm: null, ativo: true, ...form, professorId: prof.id };
     await save({ ...data, alunos: [...data.alunos, a] });
     setNovoAluno(false);
   };
@@ -5263,7 +5293,7 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
                   <div style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }} onClick={() => alternarExpandido(a.id)}>
                     <Avatar foto={a.foto} nome={a.nome} borderColor="#C9A227" />
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 600, fontSize: 14, color: "#F5F3EC" }}>{a.nome}{a.apelido && <span style={{ fontWeight: 400, color: "#9B9891" }}> "{a.apelido}"</span>}</div>
+                      <div style={{ fontWeight: 600, fontSize: 14, color: "#F5F3EC" }}>{a.codigo && <span style={{ color: "#C9A227", fontWeight: 700 }}>{formatarCodigoAluno(a.codigo)} · </span>}{a.nome}{a.apelido && <span style={{ fontWeight: 400, color: "#9B9891" }}> "{a.apelido}"</span>}</div>
                       <BeltBar faixas={data.faixas} faixaId={a.faixaId} grau={a.grau} textColor="#F5F3EC" />
                       {!aberto && (
                         <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
@@ -5846,7 +5876,7 @@ function AlunoDashboard({ data, save, aluno, onSair }) {
                     {arquivoFoto && <CropperFoto arquivo={arquivoFoto} onSave={salvarFotoCortada} onCancel={() => setArquivoFoto(null)} />}
                   </div>
                   <div style={{ flex: 1, minWidth: 160 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: "#C9A227", textTransform: "uppercase", letterSpacing: 0.5 }}>Área do aluno</div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#C9A227", textTransform: "uppercase", letterSpacing: 0.5 }}>Área do aluno{aluno.codigo ? ` · ${formatarCodigoAluno(aluno.codigo)}` : ""}</div>
                     <div style={{ fontFamily: "Oswald", fontWeight: 700, fontSize: 18, color: "#fff" }}>{aluno.nome}{aluno.apelido && <span style={{ fontWeight: 400 }}> "{aluno.apelido}"</span>}</div>
                     <div style={{ fontSize: 12, color: "#B8B2A0", marginTop: 2 }}>
                       {aluno.email || "sem e-mail"}{professorVinculadoNome ? ` · Prof. ${professorVinculadoNome}` : ""}

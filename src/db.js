@@ -29,7 +29,7 @@ const MAPS = {
     grau: "grau", dataNascimento: "data_nascimento", matricula: "matricula", planoId: "plano_id",
     diaVencimento: "dia_vencimento", ultimoPagamento: "ultimo_pagamento",
     checkinsDesdeGraduacao: "checkins_desde_graduacao", termoAceito: "termo_aceito",
-    termoAceitoEm: "termo_aceito_em", termoAssinadoManual: "termo_assinado_manual", professorId: "professor_id", peso: "peso", apelido: "apelido", unidadeId: "unidade_id", ativo: "ativo", turmaId: "turma_id", assinaturaTermo: "assinatura_termo",
+    termoAceitoEm: "termo_aceito_em", termoAssinadoManual: "termo_assinado_manual", professorId: "professor_id", peso: "peso", apelido: "apelido", unidadeId: "unidade_id", ativo: "ativo", turmaId: "turma_id", assinaturaTermo: "assinatura_termo", codigo: "codigo",
   },
   pagamentos: { id: "id", alunoId: "aluno_id", data: "data", valor: "valor" },
   sessoes_checkin: {
@@ -115,6 +115,7 @@ export async function loadAll() {
     a.grau = Number(a.grau) || 0;
     a.diaVencimento = a.diaVencimento === null ? null : Number(a.diaVencimento);
     a.checkinsDesdeGraduacao = Number(a.checkinsDesdeGraduacao) || 0;
+    a.codigo = a.codigo === null || a.codigo === undefined ? null : Number(a.codigo);
     a.pagamentos = pagamentosPorAluno[a.id] || [];
     return a;
   });
@@ -195,6 +196,12 @@ export async function saveAll(next, anterior) {
     .filter(Boolean);
 
   if (erros.length) throw new Error(erros.join(" | "));
+}
+
+// Usado só pra migração automática do número de cadastro (atribuirCodigosFaltantes) — sincroniza
+// apenas a tabela "alunos", sem disparar o resync geral das outras ~12 tabelas.
+export async function saveAlunos(alunos) {
+  await syncTable("alunos", alunos);
 }
 
 export async function salvarInscricaoPush({ alunoId, professorId }, subscription) {
