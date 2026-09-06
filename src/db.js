@@ -20,7 +20,7 @@ const MAPS = {
   professores: {
     id: "id", nome: "nome", email: "email", especialidade: "especialidade",
     telefone: "telefone", endereco: "endereco", faixaId: "faixa_id", grau: "grau", foto: "foto", senha: "senha",
-    dataNascimento: "data_nascimento", unidadeId: "unidade_id",
+    dataNascimento: "data_nascimento", unidadeId: "unidade_id", ativo: "ativo",
   },
   alunos: {
     id: "id", nome: "nome", email: "email", senha: "senha", primeiroAcesso: "primeiro_acesso",

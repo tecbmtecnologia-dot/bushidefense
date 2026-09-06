@@ -1564,6 +1564,10 @@ function AdminView({ data, save, onSairAdmin }) {
   const addProf = async (form) => { const p = { id: uid(), tipo: "professor", ...form }; await save({ ...data, professores: [...data.professores, p] }); setNovoProf(false); };
   const editarProf = async (id, form) => { const professores = data.professores.map((p) => (p.id === id ? { ...p, ...form } : p)); await save({ ...data, professores }); setEditandoProf(null); };
   const removerProf = async (id) => { await save({ ...data, professores: data.professores.filter((p) => p.id !== id) }); };
+  const alternarAtivoProf = async (id) => {
+    const professores = data.professores.map((p) => (p.id === id ? { ...p, ativo: p.ativo === false ? true : false } : p));
+    await save({ ...data, professores });
+  };
   const resetarSenhaProf = async (id) => {
     const nova = randomSenha();
     const professores = data.professores.map((p) => (p.id === id ? { ...p, senha: nova } : p));
@@ -1745,7 +1749,7 @@ function AdminView({ data, save, onSairAdmin }) {
           {editandoProf && <PersonForm tipo="professor" faixas={data.faixas} unidades={data.unidades} initial={editandoProf} onCancel={() => setEditandoProf(null)} onSave={(form) => editarProf(editandoProf.id, form)} />}
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {data.professores.map((p) => (
-              <Card dark key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: 12, flexWrap: "wrap", gap: 8 }}>
+              <Card dark key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: 12, flexWrap: "wrap", gap: 8, opacity: p.ativo === false ? 0.6 : 1 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <Avatar foto={p.foto} nome={p.nome} />
                   <div>
@@ -1755,8 +1759,10 @@ function AdminView({ data, save, onSairAdmin }) {
                   </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  {p.ativo === false && <Tag ok={false}>Acesso desativado</Tag>}
                   {senhaGeradaProf?.id === p.id && <span style={{ fontSize: 11.5, fontWeight: 700, color: "#6FCF7A" }}>Nova senha: {senhaGeradaProf.senha}</span>}
                   <Button variant="ghost" onClick={() => resetarSenhaProf(p.id)} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>Redefinir senha</Button>
+                  <Button variant={p.ativo === false ? "gold" : "ghost"} style={p.ativo === false ? undefined : { color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }} onClick={() => alternarAtivoProf(p.id)}>{p.ativo === false ? "Reativar acesso" : "Desativar acesso"}</Button>
                   <Button variant="ghost" onClick={() => setEditandoProf(p)} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>Editar</Button>
                   <ConfirmDelete onConfirm={() => removerProf(p.id)} />
                 </div>
@@ -4863,6 +4869,7 @@ function ProfessorLogin({ data, onLogin }) {
   const entrar = () => {
     const prof = data.professores.find((p) => p.email && p.email.toLowerCase() === email.trim().toLowerCase() && (p.senha || "").trim() === senha.trim());
     if (!prof) { setErro("E-mail ou senha incorretos."); return; }
+    if (prof.ativo === false) { setErro("Seu acesso foi desativado. Fale com a administração da academia."); return; }
     setErro("");
     onLogin(prof.id, lembrar);
   };
@@ -4899,7 +4906,23 @@ function ProfessorView({ data, save, activeProfId, setActiveProfId }) {
     try { localStorage.removeItem(REMEMBER_PROF_KEY); } catch (_) {}
     setActiveProfId(null);
   };
-  if (!prof) return <ProfessorLogin data={data} onLogin={handleLogin} />;
+
+  // Verifica de tempos em tempos, direto no banco, se o acesso deste professor ainda está ativo —
+  // pra derrubar a sessão automaticamente mesmo se ele já estiver logado em outro aparelho quando for desativado.
+  useEffect(() => {
+    if (!prof || prof.ativo === false) return;
+    const verificar = async () => {
+      try {
+        const linhas = await pg.select("professores", `select=ativo&id=eq.${prof.id}`);
+        const ainda = linhas && linhas[0];
+        if (!ainda || ainda.ativo === false) handleSair();
+      } catch (_) { /* falha de rede não desloga por engano */ }
+    };
+    const intervalo = setInterval(verificar, 60000);
+    return () => clearInterval(intervalo);
+  }, [prof?.id, prof?.ativo]);
+
+  if (!prof || prof.ativo === false) return <ProfessorLogin data={data} onLogin={handleLogin} />;
   return <ProfessorDashboard data={data} save={save} prof={prof} onSair={handleSair} />;
 }
 
@@ -5588,6 +5611,22 @@ function AlunoView({ data, save, activeAlunoId, setActiveAlunoId }) {
     try { localStorage.removeItem(REMEMBER_KEY); } catch (_) {}
     setActiveAlunoId(null);
   };
+
+  // Mesma lógica do professor: confere no banco de tempos em tempos se o acesso continua ativo,
+  // pra derrubar a sessão automaticamente se o aluno for desativado enquanto já está logado.
+  useEffect(() => {
+    if (!aluno || aluno.ativo === false) return;
+    const verificar = async () => {
+      try {
+        const linhas = await pg.select("alunos", `select=ativo&id=eq.${aluno.id}`);
+        const ainda = linhas && linhas[0];
+        if (!ainda || ainda.ativo === false) handleSair();
+      } catch (_) { /* falha de rede não desloga por engano */ }
+    };
+    const intervalo = setInterval(verificar, 60000);
+    return () => clearInterval(intervalo);
+  }, [aluno?.id, aluno?.ativo]);
+
   if (!aluno || aluno.ativo === false) return <AlunoLogin data={data} save={save} onLogin={handleLogin} />;
   if (aluno.primeiroAcesso && (data.academia.termoPadrao || data.academia.termoPdf)) return <PrimeiroAcessoTermo data={data} save={save} aluno={aluno} />;
   return <AlunoDashboard data={data} save={save} aluno={aluno} onSair={handleSair} />;
