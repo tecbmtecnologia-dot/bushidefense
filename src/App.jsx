@@ -1219,6 +1219,12 @@ function RelatoriosProfessor({ data, prof, meusAlunos }) {
             onClick={() => setSecaoExpandida(secaoExpandida === "pagamentos" ? null : "pagamentos")} />
         )}
 
+        {visivel("financeiro", "Vendas de produtos") && (
+          <CartaoRelatorio dark corIcone="#FFF3E0" icone="🛍️" tag="Financeiro" titulo="Vendas de produtos"
+            descricao="Total vendido e detalhamento por produto, das suas vendas registradas." botao={{ variant: "gold" }}
+            onClick={() => { setErro(""); gerarRelatorioVendas(data, setErro, (data.vendas || []).filter((v) => v.professorId === prof.id), prof.nome); }} />
+        )}
+
         {visivel("graduacao", "Alunos por faixa") && (
           <CartaoRelatorio dark corIcone="#FFF9E0" icone="🎖️" tag="Graduação" titulo="Alunos por faixa"
             descricao="Distribuição dos seus alunos por faixa atual." botao={{ variant: "gold", texto: "Ver gráfico" }}
@@ -2735,6 +2741,60 @@ function gerarRelatorioAlunosPorUnidade(data, onErro) {
   abrirJanelaRelatorio(html, onErro);
 }
 
+function legendaPizzaMoedaHtml(itens) {
+  return `<div class="legenda-pizza">${itens
+    .map((it) => `<div class="legenda-item"><span class="legenda-cor" style="background:${it.cor};border:1px solid rgba(0,0,0,0.15);"></span>${it.nome}: <span class="legenda-valor">R$ ${it.valor.toFixed(2)}</span></div>`)
+    .join("")}</div>`;
+}
+
+function gerarRelatorioVendas(data, onErro, vendasFiltro, tituloExtra) {
+  const vendasBase = vendasFiltro || data.vendas || [];
+  const totalVendido = vendasBase.reduce((s, v) => s + (v.valor || 0), 0);
+
+  const porProduto = {};
+  vendasBase.forEach((v) => { porProduto[v.produtoNome || "—"] = (porProduto[v.produtoNome || "—"] || 0) + (v.valor || 0); });
+  const pizzaPorProduto = Object.entries(porProduto)
+    .sort((a, b) => b[1] - a[1])
+    .map(([nome, valor], i) => ({ nome, valor, cor: CORES_UNIDADES[i % CORES_UNIDADES.length] }));
+
+  const linhas = [...vendasBase]
+    .sort((a, b) => (b.data || "").localeCompare(a.data || ""))
+    .map((v) => {
+      const aluno = data.alunos.find((a) => a.id === v.alunoId);
+      const professor = data.professores.find((p) => p.id === v.professorId);
+      return `<tr>
+        <td>${v.produtoNome}</td>
+        <td>${aluno?.nome || "—"}</td>
+        <td>${professor?.nome || "—"}</td>
+        <td>${v.data ? new Date(v.data + "T00:00:00").toLocaleDateString("pt-BR") : "—"}</td>
+        <td>R$ ${(v.valor || 0).toFixed(2)}</td>
+      </tr>`;
+    })
+    .join("") || `<tr><td colspan="5">Nenhuma venda registrada.</td></tr>`;
+
+  const graficoHtml = pizzaPorProduto.length
+    ? `<div class="section-title">Vendas por produto</div>
+       <div class="grafico-faixas">${svgPizza(pizzaPorProduto)}${legendaPizzaMoedaHtml(pizzaPorProduto)}</div>`
+    : "";
+
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Relatório de vendas</title>
+    <style>${estiloRelatorioModerno()}</style></head>
+    <body>
+      ${marcaDaguaRelatorio(data)}
+      <button class="voltar-btn" onclick="window.close()">← Voltar para o app</button>
+      ${cabecalhoRelatorioModerno(data, "Relatório de vendas de produtos" + (tituloExtra ? " — " + tituloExtra : ""))}
+      <div class="stats">
+        <div class="stat"><div class="label">Vendas registradas</div><div class="value">${vendasBase.length}</div></div>
+        <div class="stat"><div class="label">Total vendido</div><div class="value">R$ ${totalVendido.toFixed(2)}</div></div>
+      </div>
+      ${graficoHtml}
+      <div class="section-title">Detalhamento das vendas</div>
+      <table><thead><tr><th>Produto</th><th>Aluno</th><th>Professor</th><th>Data</th><th>Valor</th></tr></thead><tbody>${linhas}</tbody></table>
+      ${rodapeRelatorioModerno()}
+    </body></html>`;
+
+  abrirJanelaRelatorio(html, onErro);
+}
 
 function PresencaManualAdmin({ data, save }) {
   const [turmaId, setTurmaId] = useState(data.turmas[0]?.id || "");
@@ -3722,6 +3782,104 @@ function ProdutosProfessor({ data, save, prof }) {
   );
 }
 
+function VendaForm({ produtos, alunos, onSave, onCancel }) {
+  const [alunoId, setAlunoId] = useState(alunos[0]?.id || "");
+  const [produtoId, setProdutoId] = useState(produtos[0]?.id || "outro");
+  const [nomeCustom, setNomeCustom] = useState("");
+  const [valor, setValor] = useState(produtos[0] ? String(produtos[0].valor) : "");
+  const [dataVenda, setDataVenda] = useState(hoje());
+
+  const selecionarProduto = (id) => {
+    setProdutoId(id);
+    if (id === "outro") { setNomeCustom(""); setValor(""); return; }
+    const p = produtos.find((x) => x.id === id);
+    if (p) setValor(String(p.valor));
+  };
+
+  const submit = () => {
+    if (!alunoId) return;
+    const produtoSelecionado = produtos.find((p) => p.id === produtoId);
+    const nome = produtoId === "outro" ? nomeCustom.trim() : (produtoSelecionado?.nome || "");
+    if (!nome || !valor || Number(valor) <= 0) return;
+    onSave({ alunoId, produtoId: produtoId === "outro" ? null : produtoId, produtoNome: nome, valor: Number(valor), data: dataVenda });
+  };
+
+  return (
+    <Card dark style={{ marginBottom: 12 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <Field label="Aluno" labelColor="#C9C4B4">
+          <select style={inputStyleDark} value={alunoId} onChange={(e) => setAlunoId(e.target.value)}>
+            {alunos.length === 0 && <option value="">Nenhum aluno vinculado</option>}
+            {alunos.map((a) => <option key={a.id} value={a.id} style={{ background: "#1A1D24", color: "#F5F3EC" }}>{a.nome}</option>)}
+          </select>
+        </Field>
+        <Field label="Produto" labelColor="#C9C4B4">
+          <select style={inputStyleDark} value={produtoId} onChange={(e) => selecionarProduto(e.target.value)}>
+            {produtos.map((p) => <option key={p.id} value={p.id} style={{ background: "#1A1D24", color: "#F5F3EC" }}>{p.nome} — R$ {p.valor.toFixed(2)}</option>)}
+            <option value="outro" style={{ background: "#1A1D24", color: "#F5F3EC" }}>Outro (não cadastrado)</option>
+          </select>
+        </Field>
+        {produtoId === "outro" && (
+          <Field label="Nome do produto" labelColor="#C9C4B4"><input style={inputStyleDark} value={nomeCustom} onChange={(e) => setNomeCustom(e.target.value)} placeholder="Ex: Faixa avulsa" /></Field>
+        )}
+        <Field label="Valor da venda (R$)" labelColor="#C9C4B4"><input type="number" min="0" step="0.01" style={inputStyleDark} value={valor} onChange={(e) => setValor(e.target.value)} placeholder="0,00" /></Field>
+        <p style={{ fontSize: 11.5, color: "#9B9891", margin: 0 }}>O valor já vem preenchido com o preço cadastrado do produto — pode deixar como está ou editar (ex: desconto, combo).</p>
+        <Field label="Data da venda" labelColor="#C9C4B4"><input type="date" style={{ ...inputStyleDark, maxWidth: "100%" }} value={dataVenda} onChange={(e) => setDataVenda(e.target.value)} /></Field>
+      </div>
+      <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+        <ConfirmButton dark onConfirm={submit}>Registrar venda</ConfirmButton>
+        <Button variant="ghost" icon={X} style={{ color: "#FFFFFF", border: "1px solid rgba(255,255,255,0.2)" }} onClick={onCancel}>Cancelar</Button>
+      </div>
+    </Card>
+  );
+}
+
+function VendasProfessor({ data, save, prof }) {
+  const [novo, setNovo] = useState(false);
+  const meusAlunos = data.alunos.filter((a) => a.professorId === prof.id);
+  const meusProdutos = (data.produtos || []).filter((p) => p.professorId === prof.id);
+  const minhasVendas = [...(data.vendas || [])]
+    .filter((v) => v.professorId === prof.id)
+    .sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || ""));
+  const totalVendido = minhasVendas.reduce((s, v) => s + (v.valor || 0), 0);
+
+  const adicionar = async (form) => {
+    const venda = { id: uid(), criadoEm: new Date().toISOString(), professorId: prof.id, ...form };
+    await save({ ...data, vendas: [...(data.vendas || []), venda] });
+    setNovo(false);
+  };
+  const remover = async (id) => {
+    await save({ ...data, vendas: (data.vendas || []).filter((v) => v.id !== id) });
+  };
+
+  return (
+    <div>
+      <p style={{ fontSize: 12.5, color: "#9B9891", marginTop: 0 }}>Registre aqui as vendas de produtos pros seus alunos — vale tanto pra um produto já cadastrado quanto pra algo avulso (não precisa estar na lista de produtos).</p>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
+        <div style={{ fontSize: 13, color: "#C9C4B4" }}>{minhasVendas.length} venda(s) · total <span style={{ color: "#C9A227", fontWeight: 700 }}>R$ {totalVendido.toFixed(2)}</span></div>
+        <Button icon={Plus} onClick={() => setNovo(true)}>Registrar venda</Button>
+      </div>
+      {novo && <VendaForm produtos={meusProdutos} alunos={meusAlunos} onCancel={() => setNovo(false)} onSave={adicionar} />}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {minhasVendas.map((v) => {
+          const aluno = data.alunos.find((a) => a.id === v.alunoId);
+          return (
+            <Card dark key={v.id} style={{ padding: 12, display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: "#F5F3EC" }}>{v.produtoNome}</div>
+                <div style={{ fontSize: 12, color: "#9B9891" }}>{aluno?.nome || "Aluno removido"} · {v.data ? new Date(v.data + "T00:00:00").toLocaleDateString("pt-BR") : "—"}</div>
+              </div>
+              <div style={{ fontSize: 13, color: "#C9A227", fontWeight: 700, flexShrink: 0 }}>R$ {v.valor.toFixed(2)}</div>
+              <ConfirmDelete onConfirm={() => remover(v.id)} />
+            </Card>
+          );
+        })}
+        {minhasVendas.length === 0 && <Empty dark>Nenhuma venda registrada ainda.</Empty>}
+      </div>
+    </div>
+  );
+}
+
 function TurmasProfessor({ data, save, prof }) {
   const [nova, setNova] = useState(false);
   const [editando, setEditando] = useState(null);
@@ -4355,6 +4513,7 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
     { id: "avisos", label: "Avisos" },
     { id: "videos", label: "Vídeos" },
     { id: "produtos", label: "Produtos" },
+    { id: "vendas", label: "Vendas" },
     { id: "reuniao", label: "Reunião" },
     { id: "perfil", label: "Meu Perfil" },
   ];
@@ -4381,7 +4540,7 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
     });
 
   const iconesTabs = {
-    dashboard: "📊", inicio: "🏠", alunos: "🤼", checkins: "📍", turmas: "📅", financeiro: "💰", relatorios: "📑", avisos: "🔔", videos: "🎬", produtos: "🛍️", reuniao: "🎥", perfil: "👤",
+    dashboard: "📊", inicio: "🏠", alunos: "🤼", checkins: "📍", turmas: "📅", financeiro: "💰", relatorios: "📑", avisos: "🔔", videos: "🎬", produtos: "🛍️", vendas: "💵", reuniao: "🎥", perfil: "👤",
   };
 
   const [refFullBleed, estiloFullBleed] = useFullBleed();
@@ -4647,6 +4806,8 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
       {tab === "videos" && <VideosProfessor data={data} save={save} prof={prof} />}
 
       {tab === "produtos" && <ProdutosProfessor data={data} save={save} prof={prof} />}
+
+      {tab === "vendas" && <VendasProfessor data={data} save={save} prof={prof} />}
 
       {tab === "reuniao" && <SalaReuniaoProfessores data={data} prof={prof} />}
 
@@ -5218,6 +5379,10 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
           <div style={{ marginTop: 20 }}>
             <div style={{ ...blockTitleStyle, color: "#F5F3EC" }}>🛍️ Produtos à venda</div>
             <ProdutosProfessor data={data} save={save} prof={prof} />
+          </div>
+          <div style={{ marginTop: 20 }}>
+            <div style={{ ...blockTitleStyle, color: "#F5F3EC" }}>💵 Vendas de produtos</div>
+            <VendasProfessor data={data} save={save} prof={prof} />
           </div>
           <div style={{ marginTop: 20 }}>
             <SalaReuniaoProfessores data={data} prof={prof} />

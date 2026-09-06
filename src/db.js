@@ -41,6 +41,7 @@ const MAPS = {
   videos: { id: "id", titulo: "titulo", url: "url", legenda: "legenda", criadoEm: "criado_em", professorId: "professor_id", unidadeId: "unidade_id" },
   unidades: { id: "id", nome: "nome", endereco: "endereco", latitude: "latitude", longitude: "longitude", raioCheckin: "raio_checkin", chavePix: "chave_pix" },
   produtos: { id: "id", nome: "nome", valor: "valor", fotos: "fotos", ativo: "ativo", criadoEm: "criado_em", professorId: "professor_id" },
+  vendas: { id: "id", alunoId: "aluno_id", professorId: "professor_id", produtoId: "produto_id", produtoNome: "produto_nome", valor: "valor", data: "data", criadoEm: "criado_em" },
 };
 
 function toDb(entity, obj) {
@@ -75,7 +76,7 @@ async function syncTable(entity, items) {
 }
 
 export async function loadAll() {
-  const [academiaRows, faixasRows, planosRows, turmasRows, professoresRows, alunosRows, pagamentosRows, sessoesRows, checkinsRows, avisosRows, videosRows, unidadesRows, produtosRows] = await Promise.all([
+  const [academiaRows, faixasRows, planosRows, turmasRows, professoresRows, alunosRows, pagamentosRows, sessoesRows, checkinsRows, avisosRows, videosRows, unidadesRows, produtosRows, vendasRows] = await Promise.all([
     pg.select("academia", "select=*&limit=1"),
     pg.select("faixas", "select=*&order=ordem.asc"),
     pg.select("planos"),
@@ -89,6 +90,7 @@ export async function loadAll() {
     pg.select("videos", "select=*&order=criado_em.desc"),
     pg.select("unidades", "select=*&order=nome.asc"),
     pg.select("produtos", "select=*&order=criado_em.desc"),
+    pg.select("vendas", "select=*&order=criado_em.desc"),
   ]);
 
   if (!academiaRows || academiaRows.length === 0) {
@@ -145,8 +147,9 @@ export async function loadAll() {
     u.raioCheckin = u.raioCheckin === null || u.raioCheckin === undefined ? null : Number(u.raioCheckin);
     return u;
   });
+  const vendas = (vendasRows || []).map((row) => { const v = fromDb("vendas", row); v.valor = Number(v.valor) || 0; return v; });
 
-  return { academia, faixas, planos, turmas, professores, alunos, sessoes, checkins, avisos, videos, unidades, produtos };
+  return { academia, faixas, planos, turmas, professores, alunos, sessoes, checkins, avisos, videos, unidades, produtos, vendas };
 }
 
 /*
@@ -182,6 +185,7 @@ export async function saveAll(next, anterior) {
   if (mudou("videos")) tarefas.push({ nome: "videos", fn: () => syncTable("videos", next.videos || []) });
   if (mudou("unidades")) tarefas.push({ nome: "unidades", fn: () => syncTable("unidades", next.unidades || []) });
   if (mudou("produtos")) tarefas.push({ nome: "produtos", fn: () => syncTable("produtos", next.produtos || []) });
+  if (mudou("vendas")) tarefas.push({ nome: "vendas", fn: () => syncTable("vendas", next.vendas || []) });
 
   if (!tarefas.length) return;
 
