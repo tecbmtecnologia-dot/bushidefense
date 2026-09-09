@@ -30,6 +30,14 @@ if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
   console.error("Faltou SUPABASE_URL e/ou SUPABASE_SERVICE_ROLE_KEY nas variáveis de ambiente.");
   process.exit(1);
 }
+if (!/^eyJ/.test(SERVICE_ROLE_KEY.trim())) {
+  console.error(
+    "SUPABASE_SERVICE_ROLE_KEY não parece uma chave válida (deveria começar com \"eyJ\").\n" +
+    "Confira se copiou a chave 'service_role' (não a 'anon') em Project Settings > API,\n" +
+    "e se não sobrou aspas ou espaço a mais ao colar no $env:."
+  );
+  process.exit(1);
+}
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
@@ -110,5 +118,5 @@ async function main() {
 
 main().catch((e) => {
   console.error("Falha:", e.message);
-  process.exit(1);
+  process.exitCode = 1;
 });
