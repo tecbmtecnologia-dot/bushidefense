@@ -76,22 +76,32 @@ async function syncTable(entity, items) {
   if (toDelete.length) await pg.deleteIn(entity, toDelete);
 }
 
+// Antes do login (ou pra papel sem acesso a uma tabela) a RLS nega a leitura — trata isso como
+// "nada disponível ainda" em vez de erro de conexão. Só `academia` (pública) é obrigatória.
+async function selectSafe(table, params) {
+  try {
+    return await pg.select(table, params);
+  } catch (_) {
+    return [];
+  }
+}
+
 export async function loadAll() {
   const [academiaRows, faixasRows, planosRows, turmasRows, professoresRows, alunosRows, pagamentosRows, sessoesRows, checkinsRows, avisosRows, videosRows, unidadesRows, produtosRows, vendasRows] = await Promise.all([
     pg.select("academia", "select=*&limit=1"),
-    pg.select("faixas", "select=*&order=ordem.asc"),
-    pg.select("planos"),
-    pg.select("turmas"),
-    pg.select("professores"),
-    pg.select("alunos"),
-    pg.select("pagamentos"),
-    pg.select("sessoes_checkin"),
-    pg.select("checkins"),
-    pg.select("avisos", "select=*&order=criado_em.desc"),
-    pg.select("videos", "select=*&order=criado_em.desc"),
-    pg.select("unidades", "select=*&order=nome.asc"),
-    pg.select("produtos", "select=*&order=criado_em.desc"),
-    pg.select("vendas", "select=*&order=criado_em.desc"),
+    selectSafe("faixas", "select=*&order=ordem.asc"),
+    selectSafe("planos"),
+    selectSafe("turmas"),
+    selectSafe("professores"),
+    selectSafe("alunos"),
+    selectSafe("pagamentos"),
+    selectSafe("sessoes_checkin"),
+    selectSafe("checkins"),
+    selectSafe("avisos", "select=*&order=criado_em.desc"),
+    selectSafe("videos", "select=*&order=criado_em.desc"),
+    selectSafe("unidades", "select=*&order=nome.asc"),
+    selectSafe("produtos", "select=*&order=criado_em.desc"),
+    selectSafe("vendas", "select=*&order=criado_em.desc"),
   ]);
 
   if (!academiaRows || academiaRows.length === 0) {

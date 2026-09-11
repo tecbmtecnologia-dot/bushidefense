@@ -983,7 +983,9 @@ export default function App({ modo = "admin" }) {
     setErroConexao(null);
     try {
       const fresh = await loadAll();
-      if (fresh.alunos.some((a) => !a.codigo)) {
+      // Numerar automaticamente só faz sentido vendo a lista inteira de alunos — com RLS,
+      // isso só acontece numa sessão de admin (professor/aluno só recebem o próprio recorte).
+      if (role === "admin" && fresh.alunos.some((a) => !a.codigo)) {
         fresh.alunos = atribuirCodigosFaltantes(fresh.alunos);
         try { await saveAlunos(fresh.alunos); } catch (_) { /* atualiza a lista mesmo assim; tenta salvar de novo na próxima carga */ }
       }
@@ -996,6 +998,16 @@ export default function App({ modo = "admin" }) {
   };
 
   useEffect(() => { carregar(); }, []);
+
+  // Reconsulta o banco sempre que login/logout acontece: a RLS libera um recorte diferente de
+  // dados pra cada estado de sessão, e o primeiro carregamento (antes de logar) só trouxe o que
+  // dava pra ver sem sessão.
+  const primeiraChecagemSessao = useRef(true);
+  useEffect(() => {
+    if (authUserId === undefined) return;
+    if (primeiraChecagemSessao.current) { primeiraChecagemSessao.current = false; return; }
+    carregar();
+  }, [authUserId]);
 
   // Deriva quem está logado a partir da sessão real: acha o registro local (aluno/professor/admin)
   // cujo auth_user_id bate com o usuário autenticado no Supabase. Some se a sessão cair ou se a
@@ -5135,7 +5147,10 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
       alert(e.message);
       return;
     }
-    const a = { id: uid(), tipo: "aluno", matricula: hoje(), codigo: proximoCodigoAluno(data.alunos), ultimoPagamento: null, foto: null, pagamentos: [], checkinsDesdeGraduacao: 0, primeiroAcesso: true, termoAceito: false, termoAceitoEm: null, ativo: true, ...form, professorId: prof.id, ...authPatch };
+    // codigo fica null aqui: com RLS, este professor só enxerga os próprios alunos, então
+    // calcular o "próximo número" a partir dessa lista parcial colidiria com o de outro
+    // professor. Quem preenche é o backfill que roda só em sessão de admin (em carregar()).
+    const a = { id: uid(), tipo: "aluno", matricula: hoje(), codigo: null, ultimoPagamento: null, foto: null, pagamentos: [], checkinsDesdeGraduacao: 0, primeiroAcesso: true, termoAceito: false, termoAceitoEm: null, ativo: true, ...form, professorId: prof.id, ...authPatch };
     await save({ ...data, alunos: [...data.alunos, a] });
     setNovoAluno(false);
   };

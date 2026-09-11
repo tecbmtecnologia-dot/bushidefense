@@ -15,8 +15,8 @@ export const SUPABASE_KEY_EXPORT = SUPABASE_KEY;
 export const SUPABASE_URL_EXPORT = SUPABASE_URL;
 
 // Cliente oficial, usado pra autenticação real (Supabase Auth) — login, sessão e refresh de
-// token. As leituras/escritas do app continuam pelo `pg` abaixo (chave anônima); ligar RLS e
-// passar a usar o token da pessoa logada nessas chamadas fica pra uma etapa futura.
+// token. `pg` abaixo usa a sessão daqui pra anexar o token de quem está logado nas leituras/
+// escritas (necessário pra RLS liberar as linhas certas pra cada papel).
 //
 // index.html, alunos.html e professores.html são 3 páginas separadas do mesmo site (mesma
 // origem), mas cada uma loga um papel diferente (admin/aluno/professor) — por isso a chave de
@@ -58,11 +58,19 @@ const BASE = `${SUPABASE_URL}/rest/v1`;
 const STORAGE_BASE = `${SUPABASE_URL}/storage/v1`;
 
 async function pgFetch(path, options = {}) {
+  // apikey é sempre a chave publicável; Authorization leva o token de quem está logado (papel
+  // "authenticated" no Postgres, o que a RLS usa pra decidir o que cada um pode ver) — ou, sem
+  // sessão, a própria chave publicável (papel "anon", só o que a RLS libera publicamente).
+  let token = SUPABASE_KEY;
+  try {
+    const { data } = await supabaseAuth.getSession();
+    if (data?.session?.access_token) token = data.session.access_token;
+  } catch (_) {}
   const res = await fetch(`${BASE}${path}`, {
     ...options,
     headers: {
       apikey: SUPABASE_KEY,
-      Authorization: `Bearer ${SUPABASE_KEY}`,
+      Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
       ...(options.headers || {}),
     },
