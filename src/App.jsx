@@ -2460,8 +2460,8 @@ function AlunosPorFaixaChart({ alunos, faixas, titulo, dark = false }) {
               {porFaixa.map((d, i) => (
                 <div key={i} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5 }}>
                   <span style={{ width: 9, height: 9, borderRadius: 2.5, flexShrink: 0, background: d.color, boxShadow: d.borda ? `inset 0 0 0 1px ${d.borda}` : undefined }} />
-                  <span style={{ color: "#3A3324", fontWeight: 500 }}>{d.name}</span>
-                  <b style={{ marginLeft: "auto", color: LIGHT.muted, fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>{d.value}</b>
+                  <span style={{ color: "#3A3324", fontWeight: 500 }}>{d.name}:</span>
+                  <b style={{ color: LIGHT.ink, fontVariantNumeric: "tabular-nums", fontWeight: 700 }}>{d.value}</b>
                 </div>
               ))}
             </div>
