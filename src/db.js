@@ -1,4 +1,4 @@
-import { pg, SUPABASE_URL_EXPORT, SUPABASE_ANON_KEY_EXPORT } from "./supabaseClient.js";
+import { pg, SUPABASE_URL_EXPORT, SUPABASE_KEY_EXPORT } from "./supabaseClient.js";
 
 /* Mapas de campo: chave usada na interface -> coluna no banco. */
 const MAPS = {
@@ -220,7 +220,7 @@ export async function notificarPush(titulo, mensagem, destinatario) {
   try {
     await fetch(`${SUPABASE_URL_EXPORT}/functions/v1/send-push`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_ANON_KEY_EXPORT}`, apikey: SUPABASE_ANON_KEY_EXPORT },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_KEY_EXPORT}`, apikey: SUPABASE_KEY_EXPORT },
       body: JSON.stringify({ titulo, mensagem, ...(destinatario || {}) }),
     });
   } catch (_) {

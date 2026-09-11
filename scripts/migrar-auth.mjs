@@ -4,14 +4,17 @@
 // cadastrada hoje, e salva o id retornado na coluna auth_user_id (ou admin_auth_user_id,
 // no caso do admin) do registro correspondente.
 //
-// Roda local, nunca no navegador — usa a SERVICE ROLE KEY (Supabase > Project Settings >
-// API > service_role), que nunca deve ir pro código do app nem ser commitada.
+// Roda local, nunca no navegador — usa a SECRET KEY do Supabase (Project Settings > API >
+// "Publishable and secret API keys" > Secret keys, formato sb_secret_...) ou, se o projeto
+// ainda não tiver migrado pro sistema novo, a SERVICE ROLE KEY legada (Project Settings >
+// API > "Legacy anon, service_role API keys", formato eyJ...). Nunca deve ir pro código do
+// app nem ser commitada.
 //
 // Antes de rodar de verdade, roda com --dry-run pra conferir o que seria feito.
 //
 // Uso (PowerShell):
 //   $env:SUPABASE_URL="https://SEU-PROJETO.supabase.co"
-//   $env:SUPABASE_SERVICE_ROLE_KEY="a chave service_role"
+//   $env:SUPABASE_SERVICE_ROLE_KEY="a chave secret (sb_secret_...) ou service_role (eyJ...)"
 //   $env:ADMIN_EMAIL="seu-email@exemplo.com"
 //   node scripts/migrar-auth.mjs --dry-run
 //   node scripts/migrar-auth.mjs
@@ -30,11 +33,11 @@ if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
   console.error("Faltou SUPABASE_URL e/ou SUPABASE_SERVICE_ROLE_KEY nas variáveis de ambiente.");
   process.exit(1);
 }
-if (!/^eyJ/.test(SERVICE_ROLE_KEY.trim())) {
+if (!/^eyJ/.test(SERVICE_ROLE_KEY.trim()) && !/^sb_secret_/.test(SERVICE_ROLE_KEY.trim())) {
   console.error(
-    "SUPABASE_SERVICE_ROLE_KEY não parece uma chave válida (deveria começar com \"eyJ\").\n" +
-    "Confira se copiou a chave 'service_role' (não a 'anon') em Project Settings > API,\n" +
-    "e se não sobrou aspas ou espaço a mais ao colar no $env:."
+    "SUPABASE_SERVICE_ROLE_KEY não parece uma chave válida (deveria começar com \"eyJ\" ou \"sb_secret_\").\n" +
+    "Confira se copiou a chave 'secret' (sb_secret_...) ou 'service_role' (não a 'anon'/'publishable')\n" +
+    "em Project Settings > API, e se não sobrou aspas ou espaço a mais ao colar no $env:."
   );
   process.exit(1);
 }

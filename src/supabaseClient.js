@@ -2,19 +2,23 @@
 // ambiente (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY) no Netlify. Sem essa configuração
 // (ex: build local sem .env), cai no banco padrão da Cia Paulista — mantém tudo funcionando
 // como já funcionava antes, sem precisar mexer em nada pro deploy atual.
+//
+// VITE_SUPABASE_ANON_KEY aceita tanto a chave legada "anon" (eyJ...) quanto a "publishable
+// key" nova do Supabase (sb_publishable_...) — as duas funcionam do mesmo jeito nos headers
+// apikey/Authorization abaixo.
 import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://bzcvckrlettgnauvcmaz.supabase.co";
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ6Y3Zja3JsZXR0Z25hdXZjbWF6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYzODg4ODEsImV4cCI6MjEwMTk2NDg4MX0.QzUohc8ykAehZgRHTqFkM38HIBQemtd9godKDpVikCc";
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "sb_publishable_f2xg2seDxumSJJUSCBD9MA_ICQiYuyh";
 
-export const SUPABASE_ANON_KEY_EXPORT = SUPABASE_ANON_KEY;
+export const SUPABASE_KEY_EXPORT = SUPABASE_KEY;
 export const SUPABASE_URL_EXPORT = SUPABASE_URL;
 
 // Cliente oficial, usado só pra autenticação real (Supabase Auth) por enquanto — login,
 // sessão e refresh de token. As leituras/escritas do app continuam pelo `pg` abaixo (chave
 // anônima) até a Fase 2 dessa migração, quando as telas de login passam a usar isso de fato
 // e as consultas passam a levar o token da pessoa logada em vez da chave anônima pura.
-export const supabaseAuth = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+export const supabaseAuth = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, storageKey: "qg-auth-session" },
 }).auth;
 
@@ -25,8 +29,8 @@ async function pgFetch(path, options = {}) {
   const res = await fetch(`${BASE}${path}`, {
     ...options,
     headers: {
-      apikey: SUPABASE_ANON_KEY,
-      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
       "Content-Type": "application/json",
       ...(options.headers || {}),
     },
@@ -70,8 +74,8 @@ export async function uploadArquivo(bucket, file, onProgress) {
   await new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `${STORAGE_BASE}/object/${bucket}/${nomeArquivo}`);
-    xhr.setRequestHeader("apikey", SUPABASE_ANON_KEY);
-    xhr.setRequestHeader("Authorization", `Bearer ${SUPABASE_ANON_KEY}`);
+    xhr.setRequestHeader("apikey", SUPABASE_KEY);
+    xhr.setRequestHeader("Authorization", `Bearer ${SUPABASE_KEY}`);
     xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
     xhr.upload.onprogress = (e) => { if (onProgress && e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100)); };
     xhr.onload = () => { if (xhr.status >= 200 && xhr.status < 300) resolve(); else reject(new Error(`Falha no upload (${xhr.status}): ${xhr.responseText}`)); };
@@ -89,7 +93,7 @@ export async function removerArquivo(bucket, urlPublica) {
     const nomeArquivo = urlPublica.slice(idx + marcador.length);
     await fetch(`${STORAGE_BASE}/object/${bucket}/${nomeArquivo}`, {
       method: "DELETE",
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
     });
   } catch (_) {
     // Se falhar, não é grave — o vídeo já foi marcado como visto e não vai mais aparecer no app.
