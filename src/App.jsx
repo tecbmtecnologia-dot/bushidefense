@@ -2416,6 +2416,29 @@ function PlanosAdmin({ data, save }) {
   );
 }
 
+function PizzaSVG({ dados, size = 190 }) {
+  const total = dados.reduce((s, d) => s + d.value, 0);
+  if (!total) return null;
+  const cx = size / 2, cy = size / 2, r = size / 2 - 4;
+  let anguloAtual = -Math.PI / 2;
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      {dados.map((d, i) => {
+        const fracao = d.value / total;
+        const anguloFim = anguloAtual + fracao * Math.PI * 2;
+        const x1 = cx + r * Math.cos(anguloAtual), y1 = cy + r * Math.sin(anguloAtual);
+        const x2 = cx + r * Math.cos(anguloFim), y2 = cy + r * Math.sin(anguloFim);
+        const largeArc = fracao > 0.5 ? 1 : 0;
+        const path = fracao >= 0.999
+          ? `M ${cx} ${cy - r} A ${r} ${r} 0 1 1 ${cx - 0.01} ${cy - r} Z`
+          : `M ${cx} ${cy} L ${x1.toFixed(2)} ${y1.toFixed(2)} A ${r} ${r} 0 ${largeArc} 1 ${x2.toFixed(2)} ${y2.toFixed(2)} Z`;
+        anguloAtual = anguloFim;
+        return <path key={i} d={path} fill={d.color} stroke="#fff" strokeWidth={2} />;
+      })}
+    </svg>
+  );
+}
+
 function AlunosPorFaixaChart({ alunos, faixas, titulo, dark = false }) {
   const light = useDesktopLight();
   dark = dark && !light;
@@ -2424,22 +2447,13 @@ function AlunosPorFaixaChart({ alunos, faixas, titulo, dark = false }) {
 
   if (light) {
     const total = porFaixa.reduce((s, d) => s + d.value, 0);
-    let acumulado = 0;
-    const paradas = porFaixa.map((d) => {
-      const inicio = (acumulado / total) * 360;
-      acumulado += d.value;
-      const fim = (acumulado / total) * 360;
-      return `${d.color} ${inicio}deg ${fim}deg`;
-    });
     return (
       <Card style={{ marginBottom: 14 }}>
         <div style={blockTitleStyle}>{titulo || "Alunos por faixa"}</div>
+        <div style={{ fontSize: 12.5, color: LIGHT.muted, marginTop: -6, marginBottom: 14 }}>Total de alunos: <b style={{ color: LIGHT.ink }}>{total}</b></div>
         <div style={{ display: "flex", alignItems: "center", gap: 26, flexWrap: "wrap" }}>
-          <div style={{ width: 150, height: 150, borderRadius: "50%", flexShrink: 0, position: "relative", boxShadow: `inset 0 0 0 1px ${LIGHT.line}`, background: `conic-gradient(${paradas.join(", ")})` }}>
-            <div style={{ position: "absolute", inset: 26, borderRadius: "50%", background: LIGHT.surface, boxShadow: "0 1px 2px rgba(36,31,20,.06)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-              <span style={{ fontFamily: "Oswald", fontSize: 24, color: LIGHT.ink, lineHeight: 1 }}>{total}</span>
-              <span style={{ fontSize: 10, color: LIGHT.muted, marginTop: 3 }}>alunos</span>
-            </div>
+          <div style={{ borderRadius: "50%", flexShrink: 0, boxShadow: `inset 0 0 0 1px ${LIGHT.line}` }}>
+            <PizzaSVG dados={porFaixa} size={150} />
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 18px", flex: 1, minWidth: 220 }}>
             {porFaixa.map((d, i) => (
