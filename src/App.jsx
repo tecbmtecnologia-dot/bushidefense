@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, useLayoutEffect } from "react";
+import { useState, useEffect, useRef, useLayoutEffect, createContext, useContext } from "react";
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid } from "recharts";
-import { Shield, User, Users, QrCode, Camera, Check, Plus, Trash2, X, Award, CalendarCheck, CreditCard, ChevronRight, LogOut, Gift, RefreshCw, Download, Share } from "lucide-react";
+import { Shield, User, Users, QrCode, Camera, Check, Plus, Trash2, X, Award, CalendarCheck, CreditCard, ChevronRight, LogOut, Gift, RefreshCw, Download, Share, LayoutDashboard, UserCog, Calendar, Wallet, FileText, Bell, MapPin, Video, Home, ShoppingBag, Receipt, PlayCircle, Settings } from "lucide-react";
 import { loadAll, saveAll, saveAlunos, salvarInscricaoPush, notificarPush, criarContaAuth, redefinirSenhaAuth } from "./db.js";
 import { uploadArquivo, removerArquivo, pg, supabaseAuth, definirLembrarSessao } from "./supabaseClient.js";
 
@@ -55,6 +55,29 @@ async function sincronizarContaAuth(registroAnterior, form) {
   }
   return null;
 }
+
+// Tema claro do desktop (admin/professor, só depois de logar — ver App()). Os componentes que já
+// eram "escuros" (Card dark, StatCard dark, cores lidas direto no style) passam a checar esse
+// contexto e clarear sozinhos quando ele está ligado; fora dele (celular, telas de login, aluno)
+// continuam exatamente como sempre foram. Nenhum componente de login consulta este hook.
+const DesktopThemeContext = createContext(false);
+const useDesktopLight = () => useContext(DesktopThemeContext);
+// Estilo do botão "ghost" usado em cima de fundo escuro — repetido dezenas de vezes no app. Vira
+// undefined (usa a cor padrão do Button, que já é clara) quando o desktop está no tema claro.
+const ghostEscuroFallback = (light) => (light ? undefined : { color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" });
+
+// Paleta do tema claro — deriva da marca (navy/dourado) já usada no app, só troca o fundo escuro
+// por um canvas claro com cards de sombra suave.
+const LIGHT = {
+  ink: "#12213B", gold: "#C9A227", goldSoft: "#EFE1B0",
+  paper: "#EFEAD9", surface: "#FFFFFF", line: "#DFD6BC",
+  muted: "#8A8371", text: "#241F14",
+  good: "#1E7A34", goodSoft: "#E4F3E7",
+  warn: "#9C6B0A", warnSoft: "#FBEFD7",
+  bad: "#B3261E", badSoft: "#FBEAE8",
+  shadow: "0 1px 2px rgba(18,33,59,.05), 0 10px 26px rgba(18,33,59,.09)",
+  shadowSm: "0 1px 2px rgba(18,33,59,.05), 0 4px 12px rgba(18,33,59,.07)",
+};
 
 const STORAGE_KEY = "qg-data-v3";
 const PERIOD_MESES = { mensal: 1, trimestral: 3, semestral: 6, anual: 12 };
@@ -126,11 +149,14 @@ function statusPagamento(aluno, planos) {
   return { emDia: vencimento >= hoje(), vencimento, plano };
 }
 
-async function darBaixaEm(data, save, alunoId) {
+async function darBaixaEm(data, save, alunoId, valorProdutos = 0) {
   const alunos = data.alunos.map((a) => {
     if (a.id !== alunoId) return a;
     const plano = data.planos.find((p) => p.id === a.planoId);
-    const pagamentos = [...(a.pagamentos || []), { id: uid(), data: hoje(), valor: plano?.valor || 0 }];
+    const valorMensalidade = plano?.valor || 0;
+    const extra = Number(valorProdutos) || 0;
+    const pagamento = { id: uid(), data: hoje(), valor: valorMensalidade + extra, valorMensalidade, valorProdutos: extra };
+    const pagamentos = [...(a.pagamentos || []), pagamento];
     return { ...a, ultimoPagamento: hoje(), pagamentos };
   });
   await save({ ...data, alunos });
@@ -541,11 +567,13 @@ function CropperFoto({ arquivo, onSave, onCancel }) {
 }
 
 function Card({ children, style, dark }) {
-  return <div style={{
-    background: dark ? "#1A1D24" : "#FFFFFF",
-    border: dark ? "1px solid rgba(255,255,255,0.06)" : "1px solid #EFEBDF",
-    borderRadius: 14, padding: 18,
-    boxShadow: dark ? "0 1px 3px rgba(0,0,0,0.25)" : "0 1px 3px rgba(23,24,27,0.05)",
+  const light = useDesktopLight();
+  const escuro = dark && !light;
+  return <div className={light && dark ? "qg-card" : undefined} style={{
+    background: escuro ? "#1A1D24" : (light && dark ? LIGHT.surface : "#FFFFFF"),
+    border: escuro ? "1px solid rgba(255,255,255,0.06)" : (light && dark ? `1px solid ${LIGHT.line}` : "1px solid #EFEBDF"),
+    borderRadius: light && dark ? 16 : 14, padding: 18,
+    boxShadow: escuro ? "0 1px 3px rgba(0,0,0,0.25)" : (light && dark ? LIGHT.shadow : "0 1px 3px rgba(23,24,27,0.05)"),
     ...style,
   }}>{children}</div>;
 }
@@ -581,7 +609,7 @@ function Button({ children, onClick, variant = "primary", icon: Icon, style, typ
     danger: { background: "#FFF3F0", color: "#B3261E", border: "1px solid #F3C9C0" },
   };
   return (
-    <button type={type} onClick={onClick} disabled={disabled} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "9px 14px", borderRadius: 8, fontFamily: "Inter", fontWeight: 600, fontSize: 13.5, cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.5 : 1, border: "none", ...variants[variant], ...style }}>
+    <button type={type} onClick={onClick} disabled={disabled} className="qg-btn" style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "9px 14px", borderRadius: 8, fontFamily: "Inter", fontWeight: 600, fontSize: 13.5, cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.5 : 1, border: "none", ...variants[variant], ...style }}>
       {Icon && <Icon size={15} />}
       {children}
     </button>
@@ -606,6 +634,7 @@ function Tag({ ok, children }) {
 }
 
 function Empty({ children, dark = false }) {
+  dark = dark && !useDesktopLight();
   return <div style={{ padding: 24, textAlign: "center", color: dark ? "#C9C4B4" : "#8A8574", fontSize: 13.5, border: `1px dashed ${dark ? "rgba(255,255,255,0.25)" : "#D8D3C4"}`, borderRadius: 10 }}>{children}</div>;
 }
 
@@ -857,6 +886,7 @@ function ConfirmDelete({ onConfirm, size = 16 }) {
 }
 
 function ConfirmButton({ onConfirm, children, icon = Check, variant = "primary", dark = false }) {
+  dark = dark && !useDesktopLight();
   const [confirmando, setConfirmando] = useState(false);
   if (confirmando) {
     return (
@@ -869,6 +899,33 @@ function ConfirmButton({ onConfirm, children, icon = Check, variant = "primary",
   }
   return (
     <Button icon={icon} variant={variant} onClick={() => setConfirmando(true)}>{children}</Button>
+  );
+}
+
+function DarBaixaControle({ mensalidade, onConfirmar, dark = true }) {
+  const light = useDesktopLight();
+  const escuro = dark && !light;
+  const [aberto, setAberto] = useState(false);
+  const [produtos, setProdutos] = useState("");
+  const total = (Number(mensalidade) || 0) + (Number(produtos) || 0);
+
+  if (!aberto) {
+    return <Button variant="gold" onClick={() => setAberto(true)}>Dar baixa</Button>;
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 220 }}>
+      <Field label="Produtos comprados junto (R$, opcional)" labelColor={escuro ? "#C9C4B4" : (light ? LIGHT.muted : undefined)}>
+        <input type="number" min="0" step="0.01" style={escuro ? inputStyleDark : inputStyle} value={produtos} onChange={(e) => setProdutos(e.target.value)} placeholder="0,00" />
+      </Field>
+      <div style={{ fontSize: 12.5, color: escuro ? "#9B9891" : (light ? LIGHT.muted : "#5A5648") }}>
+        Mensalidade R$ {(Number(mensalidade) || 0).toFixed(2)}{Number(produtos) > 0 ? ` + produtos R$ ${Number(produtos).toFixed(2)}` : ""} = <strong style={{ color: "#C9A227" }}>Total R$ {total.toFixed(2)}</strong>
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <ConfirmButton dark={dark} onConfirm={() => { onConfirmar(Number(produtos) || 0); setAberto(false); setProdutos(""); }}>Confirmar pagamento</ConfirmButton>
+        <Button variant="ghost" style={escuro ? { color: "#FFFFFF", border: "1px solid rgba(255,255,255,0.2)" } : ghostEscuroFallback(light)} onClick={() => { setAberto(false); setProdutos(""); }}>Cancelar</Button>
+      </div>
+    </div>
   );
 }
 
@@ -1059,7 +1116,19 @@ export default function App({ modo = "admin" }) {
 
   return (
     <div style={{ minHeight: "100vh", background: "#F5F1E8", fontFamily: "Inter", display: "flex", flexDirection: "column" }}>
-      <style>{".qg-sem-barra{scrollbar-width:none;-ms-overflow-style:none;}.qg-sem-barra::-webkit-scrollbar{display:none;width:0;height:0;}"}</style>
+      <style>{".qg-sem-barra{scrollbar-width:none;-ms-overflow-style:none;}.qg-sem-barra::-webkit-scrollbar{display:none;width:0;height:0;}"
+        + ".qg-btn{transition:transform .35s cubic-bezier(.16,1,.3,1),box-shadow .35s cubic-bezier(.16,1,.3,1),filter .2s ease;}"
+        + ".qg-btn:hover:not(:disabled){transform:translateY(-2px) scale(1.015);filter:brightness(1.06);box-shadow:0 10px 24px rgba(18,33,59,.18);}"
+        + ".qg-btn:active:not(:disabled){transform:translateY(0) scale(.985);filter:brightness(0.95);box-shadow:0 2px 6px rgba(18,33,59,.12);transition:transform .1s ease,filter .1s ease,box-shadow .1s ease;}"
+        + "@keyframes qg-fade-in{from{opacity:0;transform:translateY(14px) scale(.99);}to{opacity:1;transform:translateY(0) scale(1);}}"
+        + ".qg-fade-in{animation:qg-fade-in .45s cubic-bezier(.16,1,.3,1) both;}"
+        + ".qg-nav-item{transition:background .3s cubic-bezier(.16,1,.3,1),color .3s cubic-bezier(.16,1,.3,1),padding-left .3s cubic-bezier(.16,1,.3,1),box-shadow .3s cubic-bezier(.16,1,.3,1);}"
+        + ".qg-nav-item:hover{padding-left:16px;background:rgba(18,33,59,.05);}"
+        + ".qg-card{transition:transform .35s cubic-bezier(.16,1,.3,1),box-shadow .35s cubic-bezier(.16,1,.3,1);}"
+        + ".qg-card:hover{transform:translateY(-3px);box-shadow:0 4px 10px rgba(18,33,59,.08),0 20px 40px rgba(18,33,59,.14);}"
+        + "@keyframes qg-pop{0%{opacity:0;transform:scale(.94);}100%{opacity:1;transform:scale(1);}}"
+        + ".qg-pop{animation:qg-pop .3s cubic-bezier(.16,1,.3,1) both;}"
+      }</style>
       {erroConexao && (
         <div style={{ background: "#FFF3F0", color: "#B3261E", fontSize: 12.5, textAlign: "center", padding: "6px 10px" }}>
           Última ação pode não ter sido salva no banco: {erroConexao}
@@ -1069,12 +1138,18 @@ export default function App({ modo = "admin" }) {
       <div style={{ flex: ehDesktopTop ? 1 : "initial", display: "flex", flexDirection: "column", background: role === "aluno" && !emTelaLoginPreta && ehDesktopTop ? "#0B0D12" : undefined }}>
         {role === "admin" && (
           <div style={{ maxWidth: 980, margin: "0 auto", padding: "22px 20px 60px", width: "100%", boxSizing: "border-box" }}>
-            {adminDesbloqueado ? <AdminView data={data} save={save} onSairAdmin={sairAdmin} /> : <AdminGate />}
+            {adminDesbloqueado ? (
+              <DesktopThemeContext.Provider value={ehDesktopTop}>
+                <AdminView data={data} save={save} onSairAdmin={sairAdmin} />
+              </DesktopThemeContext.Provider>
+            ) : <AdminGate />}
           </div>
         )}
         {role === "professor" && (
           <div style={{ maxWidth: emTelaLoginPreta && ehDesktopTop ? "none" : 980, margin: "0 auto", width: "100%", padding: !emTelaLoginPreta && ehDesktopTop ? "22px 20px 60px" : undefined, boxSizing: "border-box" }}>
-            <ProfessorView data={data} save={save} activeProfId={activeProfId} />
+            <DesktopThemeContext.Provider value={ehDesktopTop}>
+              <ProfessorView data={data} save={save} activeProfId={activeProfId} />
+            </DesktopThemeContext.Provider>
           </div>
         )}
         {role === "aluno" && (
@@ -1187,6 +1262,7 @@ function SectionTitle({ children, sub }) {
 
 /* ---------------- ADMIN ---------------- */
 function CartaoRelatorio({ corIcone, icone, tag, titulo, descricao, children, botao, onClick, dark }) {
+  dark = dark && !useDesktopLight();
   return (
     <Card dark={dark} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       <div style={{ width: 38, height: 38, borderRadius: 10, background: corIcone, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, marginBottom: 2 }}>{icone}</div>
@@ -1200,6 +1276,7 @@ function CartaoRelatorio({ corIcone, icone, tag, titulo, descricao, children, bo
 }
 
 function RelatoriosProfessor({ data, prof, meusAlunos }) {
+  const light = useDesktopLight();
   const [busca, setBusca] = useState("");
   const [categoria, setCategoria] = useState("todos");
   const [secaoExpandida, setSecaoExpandida] = useState(null);
@@ -1231,11 +1308,15 @@ function RelatoriosProfessor({ data, prof, meusAlunos }) {
 
   return (
     <div>
-      <div style={{ fontSize: 12.5, color: "#9B9891", marginBottom: 12 }}>Todos os relatórios abaixo consideram só os seus {meusAlunos.length} aluno(s) vinculado(s).</div>
+      <div style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#9B9891", marginBottom: 12 }}>Todos os relatórios abaixo consideram só os seus {meusAlunos.length} aluno(s) vinculado(s).</div>
       <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
         <input style={{ ...inputStyle, flex: 1, minWidth: 200 }} placeholder="🔍 Buscar relatório..." value={busca} onChange={(e) => setBusca(e.target.value)} />
         {categorias.map((c) => (
-          <button key={c.id} onClick={() => setCategoria(c.id)} style={{
+          <button key={c.id} onClick={() => setCategoria(c.id)} style={light ? {
+            padding: "7px 14px", borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: "pointer",
+            border: `1px solid ${LIGHT.line}`, background: categoria === c.id ? LIGHT.gold : LIGHT.surface,
+            color: categoria === c.id ? "#17181B" : LIGHT.muted,
+          } : {
             padding: "7px 14px", borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: "pointer",
             border: "1px solid rgba(255,255,255,0.14)", background: categoria === c.id ? "#C9A227" : "rgba(255,255,255,0.05)",
             color: categoria === c.id ? "#17181B" : "#C9C4B4",
@@ -1328,7 +1409,7 @@ function RelatoriosProfessor({ data, prof, meusAlunos }) {
 
         {secaoExpandida === "aniversario" && (
         <Card dark style={{ marginTop: 18 }}>
-          <div style={{ ...blockTitleStyle, color: "#F5F3EC" }}>Aniversariantes de {MESES[mesAniversario]}</div>
+          <div style={light ? blockTitleStyle : { ...blockTitleStyle, color: "#F5F3EC" }}>Aniversariantes de {MESES[mesAniversario]}</div>
           {aniversariantesDoMes.length === 0 ? (
             <Empty dark>Nenhum aniversariante em {MESES[mesAniversario]}.</Empty>
           ) : (
@@ -1336,8 +1417,8 @@ function RelatoriosProfessor({ data, prof, meusAlunos }) {
               {aniversariantesDoMes.map((a) => (
                 <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13.5 }}>
                   <Gift size={15} color="#C9A227" />
-                  <span style={{ fontWeight: 600, color: "#F5F3EC" }}>{a.nome}</span>
-                  <span style={{ color: "#9B9891" }}>dia {a.dataNascimento.split("-")[2]}</span>
+                  <span style={{ fontWeight: 600, color: light ? LIGHT.text : "#F5F3EC" }}>{a.nome}</span>
+                  <span style={{ color: light ? LIGHT.muted : "#9B9891" }}>dia {a.dataNascimento.split("-")[2]}</span>
                 </div>
               ))}
             </div>
@@ -1599,6 +1680,8 @@ function RelatoriosAdmin({ data }) {
 }
 
 function AdminView({ data, save, onSairAdmin }) {
+  const light = useDesktopLight();
+  const ghostEscuro = light ? undefined : { color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" };
   const [tab, setTab] = useState("dashboard");
   const [novoAluno, setNovoAluno] = useState(false);
   const [editandoAluno, setEditandoAluno] = useState(null);
@@ -1720,12 +1803,19 @@ function AdminView({ data, save, onSairAdmin }) {
     dashboard: "📊", alunos: "🧑‍🤝‍🧑", professores: "🥋", turmas: "📅", graduacao: "🎖️",
     planos: "💳", financeiro: "💰", relatorios: "📑", avisos: "🔔", unidades: "📍", videos: "🎬", config: "⚙️",
   };
+  const iconesTabsClaro = {
+    dashboard: LayoutDashboard, alunos: Users, professores: UserCog, turmas: Calendar, graduacao: Award,
+    planos: CreditCard, financeiro: Wallet, relatorios: FileText, avisos: Bell, unidades: MapPin, videos: Video, config: Settings,
+  };
 
   const [refFullBleed, estiloFullBleed] = useFullBleed();
 
   return (
     <div ref={refFullBleed} style={{
-      backgroundImage: "radial-gradient(circle at 15% 15%, rgba(201,162,39,0.05), transparent 40%), linear-gradient(160deg, #14171F 0%, #0B0C10 100%)",
+      backgroundImage: light
+        ? "none"
+        : "radial-gradient(circle at 15% 15%, rgba(201,162,39,0.05), transparent 40%), linear-gradient(160deg, #14171F 0%, #0B0C10 100%)",
+      background: light ? LIGHT.paper : undefined,
       minHeight: "calc(100vh - 66px)",
       ...estiloFullBleed,
       position: "relative",
@@ -1734,45 +1824,58 @@ function AdminView({ data, save, onSairAdmin }) {
       display: "flex",
       overflow: "hidden",
     }}>
-      <img src={LOGO_CACHORRO} alt="" style={{ position: "absolute", width: 420, right: -110, bottom: -70, opacity: 0.05, pointerEvents: "none", zIndex: 0 }} />
-      <div style={{ width: 220, flexShrink: 0, background: "#000", borderRight: "1px solid rgba(255,255,255,0.06)", boxSizing: "border-box", zIndex: 1 }}>
+      {!light && <img src={LOGO_CACHORRO} alt="" style={{ position: "absolute", width: 420, right: -110, bottom: -70, opacity: 0.05, pointerEvents: "none", zIndex: 0 }} />}
+      <div style={{ width: 220, flexShrink: 0, background: light ? LIGHT.surface : "#000", borderRight: light ? `1px solid ${LIGHT.line}` : "1px solid rgba(255,255,255,0.06)", boxSizing: "border-box", zIndex: 1 }}>
         <div style={{ position: "sticky", top: 0, padding: "20px 12px" }}>
-          <div style={{ padding: "0 6px 16px", marginBottom: 10, borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-            <div style={{ fontFamily: "Oswald", fontWeight: 700, color: "#fff", fontSize: 13, textTransform: "uppercase", letterSpacing: 0.4 }}>{data.academia.nome}</div>
-            <div style={{ fontSize: 10.5, color: "#9B9891", marginTop: 2 }}>Painel administrador</div>
+          <div style={{ padding: "0 6px 16px", marginBottom: 10, borderBottom: light ? `1px solid ${LIGHT.line}` : "1px solid rgba(255,255,255,0.08)" }}>
+            <div style={{ fontFamily: "Oswald", fontWeight: 700, color: light ? LIGHT.ink : "#fff", fontSize: 13, textTransform: "uppercase", letterSpacing: 0.4 }}>{data.academia.nome}</div>
+            <div style={{ fontSize: 10.5, color: light ? LIGHT.muted : "#9B9891", marginTop: 2 }}>Painel administrador</div>
           </div>
-          {tabs.map((t) => (
-            <button key={t.id} onClick={() => setTab(t.id)} style={{
-              display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left",
-              padding: "10px 12px", borderRadius: 8, border: "none", cursor: "pointer", marginBottom: 2,
-              background: tab === t.id ? "rgba(201,162,39,0.12)" : "transparent",
-              color: tab === t.id ? "#C9A227" : "#9B9891", fontSize: 13, fontWeight: 600,
-            }}>
-              <span style={{ fontSize: 15, width: 18, textAlign: "center" }}>{iconesTabs[t.id]}</span>
-              {t.label}
-            </button>
-          ))}
-          <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,0.08)" }}>
-            <Button variant="ghost" icon={LogOut} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)", width: "100%", justifyContent: "center" }} onClick={onSairAdmin}>Sair</Button>
+          {tabs.map((t) => {
+            const IconeClaro = iconesTabsClaro[t.id];
+            const ativo = tab === t.id;
+            return (
+              <button key={t.id} onClick={() => setTab(t.id)} className={light ? "qg-nav-item" : undefined} style={{
+                display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left",
+                padding: light ? "9px 12px" : "10px 12px", borderRadius: light ? 10 : 8, border: "none", cursor: "pointer", marginBottom: 2,
+                position: "relative",
+                background: ativo ? (light ? LIGHT.ink : "rgba(201,162,39,0.12)") : "transparent",
+                color: ativo ? (light ? "#FFFFFF" : "#C9A227") : (light ? "#5B5645" : "#9B9891"),
+                fontSize: 13, fontWeight: ativo ? 700 : 600,
+                boxShadow: light && ativo ? "0 6px 16px rgba(18,33,59,0.22)" : "none",
+              }}>
+                {light && ativo && <span style={{ position: "absolute", left: -12, top: 6, bottom: 6, width: 3, background: LIGHT.gold, borderRadius: "0 3px 3px 0" }} />}
+                {light ? (
+                  <IconeClaro size={16} strokeWidth={2.2} style={{ flexShrink: 0, color: ativo ? LIGHT.gold : "#8A8371" }} />
+                ) : (
+                  <span style={{ fontSize: 15, width: 18, textAlign: "center" }}>{iconesTabs[t.id]}</span>
+                )}
+                {t.label}
+              </button>
+            );
+          })}
+          <div style={{ marginTop: 16, paddingTop: 14, borderTop: light ? `1px solid ${LIGHT.line}` : "1px solid rgba(255,255,255,0.08)" }}>
+            <Button variant="ghost" icon={LogOut} style={light ? { color: LIGHT.ink, border: `1px solid ${LIGHT.line}`, width: "100%", justifyContent: "center" } : { color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)", width: "100%", justifyContent: "center" }} onClick={onSairAdmin}>Sair</Button>
           </div>
         </div>
       </div>
 
-      <div style={{ flex: 1, padding: "24px 28px 40px", minWidth: 0, color: "#F5F3EC" }}>
+      <div style={{ flex: 1, padding: "24px 28px 40px", minWidth: 0, color: light ? LIGHT.text : "#F5F3EC" }}>
         <div style={{ marginBottom: 20 }}>
-          <div style={{ fontFamily: "Oswald", fontWeight: 700, fontSize: 21, color: "#C9A227", textTransform: "uppercase" }}>{tabs.find((t) => t.id === tab)?.label}</div>
-          <div style={{ fontSize: 12, color: "#9B9891", marginTop: 2 }}>Cadastro central de alunos, professores, graduação e financeiro do QG</div>
+          <div style={{ fontFamily: "Oswald", fontWeight: light ? 600 : 700, fontSize: light ? 26 : 21, color: light ? LIGHT.ink : "#C9A227", textTransform: light ? "none" : "uppercase" }}>{tabs.find((t) => t.id === tab)?.label}</div>
+          <div style={{ fontSize: light ? 13.5 : 12, color: light ? LIGHT.muted : "#9B9891", marginTop: light ? 5 : 2 }}>Cadastro central de alunos, professores, graduação e financeiro do QG</div>
         </div>
 
+      <div key={light ? tab : undefined} className={light ? "qg-fade-in" : undefined}>
       {tab === "dashboard" && (
         <div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px,1fr))", gap: 12, marginBottom: 14 }}>
-            <StatCard label="Alunos ativos" value={data.alunos.length} icon={Users} dark />
-            <StatCard label="Professores" value={data.professores.length} icon={Award} dark />
-            <StatCard label="Turmas" value={data.turmas.length} icon={CalendarCheck} dark />
-            <StatCard label="Check-ins hoje" value={checkinsHoje} icon={QrCode} dark />
-            <StatCard label="Pagamentos pendentes" value={pendentes} icon={CreditCard} dark />
-            <StatCard label="Termos pendentes" value={termosPendentes} icon={Shield} dark />
+            <StatCard label="Alunos ativos" value={data.alunos.length} icon={Users} dark chipBg="#EEF1FA" chipColor="#12213B" />
+            <StatCard label="Professores" value={data.professores.length} icon={Award} dark chipBg={LIGHT.goldSoft} chipColor="#9C6B0A" />
+            <StatCard label="Turmas" value={data.turmas.length} icon={CalendarCheck} dark chipBg="#EEF1FA" chipColor="#12213B" />
+            <StatCard label="Check-ins hoje" value={checkinsHoje} icon={QrCode} dark chipBg={LIGHT.goodSoft} chipColor={LIGHT.good} />
+            <StatCard label="Pagamentos pendentes" value={pendentes} icon={CreditCard} dark chipBg={LIGHT.warnSoft} chipColor={LIGHT.warn} />
+            <StatCard label="Termos pendentes" value={termosPendentes} icon={Shield} dark chipBg={LIGHT.badSoft} chipColor={LIGHT.bad} />
           </div>
 
           <AlunosPorFaixaChart alunos={data.alunos} faixas={data.faixas} dark />
@@ -1819,9 +1922,9 @@ function AdminView({ data, save, onSairAdmin }) {
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <Avatar foto={a.foto} nome={a.nome} />
                     <div>
-                      <div style={{ fontWeight: 600, fontSize: 14, color: "#F5F3EC" }}>{a.codigo && <span style={{ color: "#C9A227", fontWeight: 700 }}>{formatarCodigoAluno(a.codigo)} · </span>}{a.nome}{a.apelido && <span style={{ fontWeight: 400, color: "#9B9891" }}> "{a.apelido}"</span>}</div>
-                      <BeltBar faixas={data.faixas} faixaId={a.faixaId} grau={a.grau} textColor="#F5F3EC" />
-                      <div style={{ fontSize: 11, color: "#9B9891" }}>
+                      <div style={{ fontWeight: 600, fontSize: 14, color: light ? LIGHT.text : "#F5F3EC" }}>{a.codigo && <span style={{ color: "#C9A227", fontWeight: 700 }}>{formatarCodigoAluno(a.codigo)} · </span>}{a.nome}{a.apelido && <span style={{ fontWeight: 400, color: light ? LIGHT.muted : "#9B9891" }}> "{a.apelido}"</span>}</div>
+                      <BeltBar faixas={data.faixas} faixaId={a.faixaId} grau={a.grau} textColor={light ? LIGHT.text : "#F5F3EC"} />
+                      <div style={{ fontSize: 11, color: light ? LIGHT.muted : "#9B9891" }}>
                         {professorVinculado && `Professor: ${professorVinculado.nome}`}
                         {professorVinculado && unidadeVinculada ? " · " : ""}
                         {unidadeVinculada && `Unidade: ${unidadeVinculada.nome}`}
@@ -1833,14 +1936,14 @@ function AdminView({ data, save, onSairAdmin }) {
                     </div>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                    <span style={{ fontSize: 11.5, color: "#9B9891" }}>{plano?.nome || "sem plano"}</span>
+                    <span style={{ fontSize: 11.5, color: light ? LIGHT.muted : "#9B9891" }}>{plano?.nome || "sem plano"}</span>
                     <Tag ok={emDia}>{emDia ? "Pagamento em dia" : "Pagamento pendente"}</Tag>
                     <Tag ok={a.termoAceito || a.termoAssinadoManual}>{a.termoAceito || a.termoAssinadoManual ? "Termo OK" : "Termo pendente"}</Tag>
                     {a.ativo === false && <Tag ok={false}>Acesso desativado</Tag>}
                     {senhaGerada?.id === a.id && <span style={{ fontSize: 11.5, fontWeight: 700, color: "#1E7A34" }}>Nova senha: {senhaGerada.senha}</span>}
-                    <Button variant="ghost" style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }} onClick={() => resetarSenha(a.id)}>Redefinir senha</Button>
-                    <Button variant={a.ativo === false ? "gold" : "ghost"} style={a.ativo === false ? undefined : { color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }} onClick={() => alternarAtivoAluno(a.id)}>{a.ativo === false ? "Reativar acesso" : "Desativar acesso"}</Button>
-                    <Button variant="ghost" style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }} onClick={() => setEditandoAluno(a)}>Editar</Button>
+                    <Button variant="ghost" style={ghostEscuro} onClick={() => resetarSenha(a.id)}>Redefinir senha</Button>
+                    <Button variant={a.ativo === false ? "gold" : "ghost"} style={a.ativo === false ? undefined : ghostEscuro} onClick={() => alternarAtivoAluno(a.id)}>{a.ativo === false ? "Reativar acesso" : "Desativar acesso"}</Button>
+                    <Button variant="ghost" style={ghostEscuro} onClick={() => setEditandoAluno(a)}>Editar</Button>
                     <ConfirmDelete onConfirm={() => removerAluno(a.id)} />
                   </div>
                 </Card>
@@ -1875,17 +1978,17 @@ function AdminView({ data, save, onSairAdmin }) {
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <Avatar foto={p.foto} nome={p.nome} />
                   <div>
-                    <div style={{ fontWeight: 600, fontSize: 14, color: "#F5F3EC" }}>{p.nome}</div>
-                    <div style={{ fontSize: 12.5, color: "#9B9891" }}>{p.especialidade || "—"} {p.email && `· ${p.email}`} {p.telefone && `· ${p.telefone}`}</div>
-                    {p.faixaId && <div style={{ marginTop: 4 }}><BeltBar faixas={data.faixas} faixaId={p.faixaId} grau={p.grau || 0} textColor="#F5F3EC" /></div>}
+                    <div style={{ fontWeight: 600, fontSize: 14, color: light ? LIGHT.text : "#F5F3EC" }}>{p.nome}</div>
+                    <div style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#9B9891" }}>{p.especialidade || "—"} {p.email && `· ${p.email}`} {p.telefone && `· ${p.telefone}`}</div>
+                    {p.faixaId && <div style={{ marginTop: 4 }}><BeltBar faixas={data.faixas} faixaId={p.faixaId} grau={p.grau || 0} textColor={light ? LIGHT.text : "#F5F3EC"} /></div>}
                   </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   {p.ativo === false && <Tag ok={false}>Acesso desativado</Tag>}
                   {senhaGeradaProf?.id === p.id && <span style={{ fontSize: 11.5, fontWeight: 700, color: "#6FCF7A" }}>Nova senha: {senhaGeradaProf.senha}</span>}
-                  <Button variant="ghost" onClick={() => resetarSenhaProf(p.id)} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>Redefinir senha</Button>
-                  <Button variant={p.ativo === false ? "gold" : "ghost"} style={p.ativo === false ? undefined : { color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }} onClick={() => alternarAtivoProf(p.id)}>{p.ativo === false ? "Reativar acesso" : "Desativar acesso"}</Button>
-                  <Button variant="ghost" onClick={() => setEditandoProf(p)} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>Editar</Button>
+                  <Button variant="ghost" onClick={() => resetarSenhaProf(p.id)} style={ghostEscuro}>Redefinir senha</Button>
+                  <Button variant={p.ativo === false ? "gold" : "ghost"} style={p.ativo === false ? undefined : ghostEscuro} onClick={() => alternarAtivoProf(p.id)}>{p.ativo === false ? "Reativar acesso" : "Desativar acesso"}</Button>
+                  <Button variant="ghost" onClick={() => setEditandoProf(p)} style={ghostEscuro}>Editar</Button>
                   <ConfirmDelete onConfirm={() => removerProf(p.id)} />
                 </div>
               </Card>
@@ -1908,12 +2011,12 @@ function AdminView({ data, save, onSairAdmin }) {
               return (
               <Card dark key={t.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: 12, flexWrap: "wrap", gap: 8 }}>
                 <div>
-                  <div style={{ fontWeight: 600, fontSize: 14, color: "#F5F3EC" }}>{t.nome}</div>
-                  <div style={{ fontSize: 12.5, color: "#9B9891" }}>{formatDias(t.dias)} · {t.horario}{t.horarioFim ? ` às ${t.horarioFim}` : ""}</div>
-                  <div style={{ fontSize: 11.5, color: "#9B9891" }}>Unidade: {unidadeDaTurma ? unidadeDaTurma.nome : "QG (padrão)"}</div>
+                  <div style={{ fontWeight: 600, fontSize: 14, color: light ? LIGHT.text : "#F5F3EC" }}>{t.nome}</div>
+                  <div style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#9B9891" }}>{formatDias(t.dias)} · {t.horario}{t.horarioFim ? ` às ${t.horarioFim}` : ""}</div>
+                  <div style={{ fontSize: 11.5, color: light ? LIGHT.muted : "#9B9891" }}>Unidade: {unidadeDaTurma ? unidadeDaTurma.nome : "QG (padrão)"}</div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <Button variant="ghost" onClick={() => setEditandoTurma(t)} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>Editar</Button>
+                  <Button variant="ghost" onClick={() => setEditandoTurma(t)} style={ghostEscuro}>Editar</Button>
                   <ConfirmDelete onConfirm={() => removerTurma(t.id)} />
                 </div>
               </Card>
@@ -1933,17 +2036,26 @@ function AdminView({ data, save, onSairAdmin }) {
       {tab === "videos" && <VideosAdmin data={data} save={save} />}
       {tab === "config" && <ConfiguracoesAdmin data={data} save={save} />}
       </div>
+      </div>
     </div>
   );
 }
 
-function StatCard({ label, value, icon: Icon, dark = false, accent }) {
+function StatCard({ label, value, icon: Icon, dark = false, accent, chipBg, chipColor }) {
+  const light = useDesktopLight();
+  const escuro = dark && !light;
   return (
-    <Card style={{ display: "flex", flexDirection: "column", gap: 8, position: "relative", overflow: "hidden", ...(dark ? { background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" } : {}) }}>
+    <Card style={{ display: "flex", flexDirection: "column", gap: 8, position: "relative", overflow: "hidden", ...(escuro ? { background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" } : {}) }}>
       {accent && <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 3, background: accent }} />}
-      <Icon size={18} color="#C9A227" />
-      <div style={{ fontFamily: "Oswald", fontSize: 28, fontWeight: 700, color: dark ? "#F5F3EC" : "#12213B" }}>{value}</div>
-      <div style={{ fontSize: 12.5, color: dark ? "#9B9891" : "#5A5648", fontWeight: 600 }}>{label}</div>
+      {light ? (
+        <div style={{ width: 30, height: 30, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", background: chipBg || LIGHT.goldSoft }}>
+          <Icon size={15} color={chipColor || "#9C6B0A"} />
+        </div>
+      ) : (
+        <Icon size={18} color="#C9A227" />
+      )}
+      <div style={{ fontFamily: "Oswald", fontSize: 28, fontWeight: light ? 600 : 700, color: escuro ? "#F5F3EC" : "#12213B", fontVariantNumeric: "tabular-nums" }}>{value}</div>
+      <div style={{ fontSize: 12.5, color: escuro ? "#9B9891" : "#5A5648", fontWeight: light ? 500 : 600 }}>{label}</div>
     </Card>
   );
 }
@@ -2170,6 +2282,7 @@ function FaixaForm({ onSave, onCancel }) {
 }
 
 function GraduacaoAdmin({ data, save }) {
+  const light = useDesktopLight();
   const [novo, setNovo] = useState(false);
   const [aviso, setAviso] = useState("");
   const moverFaixa = async (idx, dir) => {
@@ -2190,7 +2303,7 @@ function GraduacaoAdmin({ data, save }) {
 
   return (
     <div>
-      <p style={{ fontSize: 12.5, color: "#9B9891", marginTop: 0 }}>Baseado no sistema de graduação da IBJJF. Edite nomes, cores, graus, tempo mínimo e quantas aulas valem um novo grau. Use as setas para reordenar a sequência.</p>
+      <p style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#9B9891", marginTop: 0 }}>Baseado no sistema de graduação da IBJJF. Edite nomes, cores, graus, tempo mínimo e quantas aulas valem um novo grau. Use as setas para reordenar a sequência.</p>
       {aviso && <div style={{ fontSize: 12.5, color: "#FF8A80", fontWeight: 600, marginBottom: 10 }}>{aviso}</div>}
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
         <Button icon={Plus} onClick={() => setNovo(true)}>Nova faixa</Button>
@@ -2201,24 +2314,24 @@ function GraduacaoAdmin({ data, save }) {
           <Card dark key={f.id} style={{ padding: 12 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <BeltBar faixas={data.faixas} faixaId={f.id} grau={0} textColor="#F5F3EC" />
-                <span style={{ fontSize: 11.5, color: "#9B9891" }}>{f.categoria}</span>
+                <BeltBar faixas={data.faixas} faixaId={f.id} grau={0} textColor={light ? LIGHT.text : "#F5F3EC"} />
+                <span style={{ fontSize: 11.5, color: light ? LIGHT.muted : "#9B9891" }}>{f.categoria}</span>
               </div>
               <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                <button onClick={() => moverFaixa(idx, -1)} style={{ ...iconBtnStyle, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.14)", color: "#F5F3EC" }} disabled={idx === 0}>↑</button>
-                <button onClick={() => moverFaixa(idx, 1)} style={{ ...iconBtnStyle, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.14)", color: "#F5F3EC" }} disabled={idx === data.faixas.length - 1}>↓</button>
+                <button onClick={() => moverFaixa(idx, -1)} style={light ? { ...iconBtnStyle, background: LIGHT.paper, border: `1px solid ${LIGHT.line}`, color: LIGHT.ink } : { ...iconBtnStyle, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.14)", color: "#F5F3EC" }} disabled={idx === 0}>↑</button>
+                <button onClick={() => moverFaixa(idx, 1)} style={light ? { ...iconBtnStyle, background: LIGHT.paper, border: `1px solid ${LIGHT.line}`, color: LIGHT.ink } : { ...iconBtnStyle, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.14)", color: "#F5F3EC" }} disabled={idx === data.faixas.length - 1}>↓</button>
                 <ConfirmDelete size={14} onConfirm={() => removerFaixa(f.id)} />
               </div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px,1fr))", gap: 8, marginTop: 10 }}>
-              <Field label="Nome" labelColor="#9B9891"><input style={inputStyle} value={f.nome} onChange={(e) => atualizarFaixa(f.id, "nome", e.target.value)} /></Field>
-              <Field label="Graus máx." labelColor="#9B9891"><input type="number" min="0" max="10" style={inputStyle} value={f.grausMax} onChange={(e) => atualizarFaixa(f.id, "grausMax", Number(e.target.value))} /></Field>
-              <Field label="Tempo mínimo (anos)" labelColor="#9B9891"><input type="number" min="0" step="0.5" style={inputStyle} value={f.tempoMinimoAnos ?? ""} onChange={(e) => atualizarFaixa(f.id, "tempoMinimoAnos", e.target.value === "" ? null : Number(e.target.value))} /></Field>
-              <Field label="Aulas por grau" labelColor="#9B9891"><input type="number" min="0" style={inputStyle} value={f.aulasPorGrau ?? ""} onChange={(e) => atualizarFaixa(f.id, "aulasPorGrau", e.target.value === "" ? null : Number(e.target.value))} /></Field>
-              <Field label="Cor da faixa" labelColor="#9B9891"><input type="color" style={{ ...inputStyle, padding: 2, height: 36 }} value={f.cor} onChange={(e) => atualizarFaixa(f.id, "cor", e.target.value)} /></Field>
-              <Field label="Cor da ponta (riscos)" labelColor="#9B9891"><input type="color" style={{ ...inputStyle, padding: 2, height: 36 }} value={f.corPonta || "#17181B"} onChange={(e) => atualizarFaixa(f.id, "corPonta", e.target.value)} /></Field>
+              <Field label="Nome" labelColor={light ? LIGHT.muted : "#9B9891"}><input style={inputStyle} value={f.nome} onChange={(e) => atualizarFaixa(f.id, "nome", e.target.value)} /></Field>
+              <Field label="Graus máx." labelColor={light ? LIGHT.muted : "#9B9891"}><input type="number" min="0" max="10" style={inputStyle} value={f.grausMax} onChange={(e) => atualizarFaixa(f.id, "grausMax", Number(e.target.value))} /></Field>
+              <Field label="Tempo mínimo (anos)" labelColor={light ? LIGHT.muted : "#9B9891"}><input type="number" min="0" step="0.5" style={inputStyle} value={f.tempoMinimoAnos ?? ""} onChange={(e) => atualizarFaixa(f.id, "tempoMinimoAnos", e.target.value === "" ? null : Number(e.target.value))} /></Field>
+              <Field label="Aulas por grau" labelColor={light ? LIGHT.muted : "#9B9891"}><input type="number" min="0" style={inputStyle} value={f.aulasPorGrau ?? ""} onChange={(e) => atualizarFaixa(f.id, "aulasPorGrau", e.target.value === "" ? null : Number(e.target.value))} /></Field>
+              <Field label="Cor da faixa" labelColor={light ? LIGHT.muted : "#9B9891"}><input type="color" style={{ ...inputStyle, padding: 2, height: 36 }} value={f.cor} onChange={(e) => atualizarFaixa(f.id, "cor", e.target.value)} /></Field>
+              <Field label="Cor da ponta (riscos)" labelColor={light ? LIGHT.muted : "#9B9891"}><input type="color" style={{ ...inputStyle, padding: 2, height: 36 }} value={f.corPonta || "#17181B"} onChange={(e) => atualizarFaixa(f.id, "corPonta", e.target.value)} /></Field>
             </div>
-            {f.observacoes && <div style={{ fontSize: 11.5, color: "#9B9891", marginTop: 6 }}>{f.observacoes}</div>}
+            {f.observacoes && <div style={{ fontSize: 11.5, color: light ? LIGHT.muted : "#9B9891", marginTop: 6 }}>{f.observacoes}</div>}
           </Card>
         ))}
       </div>
@@ -2258,6 +2371,7 @@ function PlanoForm({ unidades, onSave, onCancel }) {
 }
 
 function PlanosAdmin({ data, save }) {
+  const light = useDesktopLight();
   const [novo, setNovo] = useState(false);
   const [aviso, setAviso] = useState("");
   const atualizar = async (id, campo, valor) => { const planos = data.planos.map((p) => (p.id === id ? { ...p, [campo]: valor } : p)); await save({ ...data, planos }); };
@@ -2270,7 +2384,7 @@ function PlanosAdmin({ data, save }) {
   const adicionar = async (form) => { const p = { id: uid(), ...form }; await save({ ...data, planos: [...data.planos, p] }); setNovo(false); };
   return (
     <div>
-      <p style={{ fontSize: 12.5, color: "#9B9891", marginTop: 0 }}>O status "em dia / pendente" de cada aluno é calculado automaticamente comparando a data do último pagamento e o dia de vencimento com a periodicidade do plano. Vincule um plano a uma unidade quando o valor for diferente por local — planos sem unidade ficam disponíveis pra todas.</p>
+      <p style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#9B9891", marginTop: 0 }}>O status "em dia / pendente" de cada aluno é calculado automaticamente comparando a data do último pagamento e o dia de vencimento com a periodicidade do plano. Vincule um plano a uma unidade quando o valor for diferente por local — planos sem unidade ficam disponíveis pra todas.</p>
       {aviso && <div style={{ fontSize: 12.5, color: "#FF8A80", fontWeight: 600, marginBottom: 10 }}>{aviso}</div>}
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
         <Button icon={Plus} onClick={() => setNovo(true)}>Novo plano</Button>
@@ -2280,14 +2394,14 @@ function PlanosAdmin({ data, save }) {
         {data.planos.map((p) => (
           <Card dark key={p.id} style={{ padding: 12 }}>
             <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1.4fr auto", gap: 10, alignItems: "end" }}>
-              <Field label="Nome" labelColor="#9B9891"><input style={inputStyle} value={p.nome} onChange={(e) => atualizar(p.id, "nome", e.target.value)} /></Field>
-              <Field label="Valor (R$)" labelColor="#9B9891"><input type="number" style={inputStyle} value={p.valor} onChange={(e) => atualizar(p.id, "valor", Number(e.target.value))} /></Field>
-              <Field label="Periodicidade" labelColor="#9B9891">
+              <Field label="Nome" labelColor={light ? LIGHT.muted : "#9B9891"}><input style={inputStyle} value={p.nome} onChange={(e) => atualizar(p.id, "nome", e.target.value)} /></Field>
+              <Field label="Valor (R$)" labelColor={light ? LIGHT.muted : "#9B9891"}><input type="number" style={inputStyle} value={p.valor} onChange={(e) => atualizar(p.id, "valor", Number(e.target.value))} /></Field>
+              <Field label="Periodicidade" labelColor={light ? LIGHT.muted : "#9B9891"}>
                 <select style={inputStyle} value={p.periodicidade} onChange={(e) => atualizar(p.id, "periodicidade", e.target.value)}>
                   <option value="mensal">Mensal</option><option value="trimestral">Trimestral</option><option value="semestral">Semestral</option><option value="anual">Anual</option>
                 </select>
               </Field>
-              <Field label="Unidade" labelColor="#9B9891">
+              <Field label="Unidade" labelColor={light ? LIGHT.muted : "#9B9891"}>
                 <select style={inputStyle} value={p.unidadeId || ""} onChange={(e) => atualizar(p.id, "unidadeId", e.target.value)}>
                   <option value="">Todas as unidades</option>
                   {(data.unidades || []).map((u) => <option key={u.id} value={u.id}>{u.nome}</option>)}
@@ -2303,8 +2417,44 @@ function PlanosAdmin({ data, save }) {
 }
 
 function AlunosPorFaixaChart({ alunos, faixas, titulo, dark = false }) {
-  const porFaixa = faixas.map((f) => ({ name: f.nome, value: alunos.filter((a) => a.faixaId === f.id).length, color: f.cor })).filter((d) => d.value > 0);
+  const light = useDesktopLight();
+  dark = dark && !light;
+  const porFaixa = faixas.map((f) => ({ name: f.nome, value: alunos.filter((a) => a.faixaId === f.id).length, color: f.cor, borda: f.borda })).filter((d) => d.value > 0);
   if (porFaixa.length === 0) return null;
+
+  if (light) {
+    const total = porFaixa.reduce((s, d) => s + d.value, 0);
+    let acumulado = 0;
+    const paradas = porFaixa.map((d) => {
+      const inicio = (acumulado / total) * 360;
+      acumulado += d.value;
+      const fim = (acumulado / total) * 360;
+      return `${d.color} ${inicio}deg ${fim}deg`;
+    });
+    return (
+      <Card style={{ marginBottom: 14 }}>
+        <div style={blockTitleStyle}>{titulo || "Alunos por faixa"}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 26, flexWrap: "wrap" }}>
+          <div style={{ width: 150, height: 150, borderRadius: "50%", flexShrink: 0, position: "relative", boxShadow: `inset 0 0 0 1px ${LIGHT.line}`, background: `conic-gradient(${paradas.join(", ")})` }}>
+            <div style={{ position: "absolute", inset: 26, borderRadius: "50%", background: LIGHT.surface, boxShadow: "0 1px 2px rgba(36,31,20,.06)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+              <span style={{ fontFamily: "Oswald", fontSize: 24, color: LIGHT.ink, lineHeight: 1 }}>{total}</span>
+              <span style={{ fontSize: 10, color: LIGHT.muted, marginTop: 3 }}>alunos</span>
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 18px", flex: 1, minWidth: 220 }}>
+            {porFaixa.map((d, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5 }}>
+                <span style={{ width: 9, height: 9, borderRadius: 2.5, flexShrink: 0, background: d.color, boxShadow: d.borda ? `inset 0 0 0 1px ${d.borda}` : undefined }} />
+                <span style={{ color: "#3A3324", fontWeight: 500 }}>{d.name}</span>
+                <b style={{ marginLeft: "auto", color: LIGHT.muted, fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>{d.value}</b>
+              </div>
+            ))}
+          </div>
+        </div>
+      </Card>
+    );
+  }
+
   return (
     <Card style={{ marginBottom: 14, ...(dark ? { background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" } : {}) }}>
       <div style={dark ? { ...blockTitleStyle, color: "#F5F3EC" } : blockTitleStyle}>{titulo || "Alunos por faixa"}</div>
@@ -2322,6 +2472,7 @@ function AlunosPorFaixaChart({ alunos, faixas, titulo, dark = false }) {
 }
 
 function AniversariantesCard({ alunos, dark = false }) {
+  dark = dark && !useDesktopLight();
   const [mesSelecionado, setMesSelecionado] = useState(new Date().getMonth());
   const aniversariantes = alunos.filter((a) => a.dataNascimento && Number(a.dataNascimento.split("-")[1]) - 1 === mesSelecionado).sort((x, y) => Number(x.dataNascimento.split("-")[2]) - Number(y.dataNascimento.split("-")[2]));
   return (
@@ -2350,6 +2501,8 @@ function AniversariantesCard({ alunos, dark = false }) {
 }
 
 function PagamentosChart({ data, alunosFiltro, dark = false }) {
+  const light = useDesktopLight();
+  dark = dark && !light;
   const alunosBase = alunosFiltro || data.alunos;
   const [mes, setMes] = useState(() => new Date().toISOString().slice(0, 7));
   const confirmadosMes = alunosBase.flatMap((a) => (a.pagamentos || []).filter((p) => p.data.slice(0, 7) === mes));
@@ -2357,10 +2510,13 @@ function PagamentosChart({ data, alunosFiltro, dark = false }) {
   // Pendente = qualquer aluno em atraso agora, independente do mês selecionado (uma pendência não some se venceu num mês anterior)
   const pendentesAtuais = alunosBase.filter((a) => !statusPagamento(a, data.planos).emDia);
   const totalPendente = pendentesAtuais.reduce((s, a) => s + (data.planos.find((p) => p.id === a.planoId)?.valor || 0), 0);
+  const corConfirmado = light ? LIGHT.good : "#4ADE80";
+  const corPendente = light ? LIGHT.bad : "#FF6B6B";
   const dadosGrafico = [
-    { name: "Confirmados no mês", value: confirmadosMes.length, color: "#4ADE80" },
-    { name: "Pendentes agora", value: pendentesAtuais.length, color: "#FF6B6B" },
+    { name: "Confirmados no mês", value: confirmadosMes.length, color: corConfirmado },
+    { name: "Pendentes agora", value: pendentesAtuais.length, color: corPendente },
   ].filter((d) => d.value > 0);
+  const totalGrafico = dadosGrafico.reduce((s, d) => s + d.value, 0);
 
   return (
     <Card style={{ marginBottom: 14, ...(dark ? { background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" } : {}) }}>
@@ -2368,7 +2524,38 @@ function PagamentosChart({ data, alunosFiltro, dark = false }) {
         <div style={dark ? { ...blockTitleStyle, color: "#F5F3EC" } : blockTitleStyle}>Pagamentos confirmados x pendentes</div>
         <input type="month" style={{ ...(dark ? inputStyleDark : inputStyle), maxWidth: 170 }} value={mes} onChange={(e) => setMes(e.target.value)} />
       </div>
-      {dadosGrafico.length > 0 ? (
+      {dadosGrafico.length === 0 ? (
+        <Empty dark={dark}>Sem pagamentos confirmados neste mês nem pendências no momento.</Empty>
+      ) : light ? (
+        (() => {
+          let acumulado = 0;
+          const paradas = dadosGrafico.map((d) => {
+            const inicio = (acumulado / totalGrafico) * 360;
+            acumulado += d.value;
+            const fim = (acumulado / totalGrafico) * 360;
+            return `${d.color} ${inicio}deg ${fim}deg`;
+          });
+          return (
+            <div style={{ display: "flex", alignItems: "center", gap: 22 }}>
+              <div style={{ width: 118, height: 118, borderRadius: "50%", flexShrink: 0, position: "relative", boxShadow: `inset 0 0 0 1px ${LIGHT.line}`, background: `conic-gradient(${paradas.join(", ")})` }}>
+                <div style={{ position: "absolute", inset: 20, borderRadius: "50%", background: LIGHT.surface, boxShadow: "0 1px 2px rgba(36,31,20,.06)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                  <span style={{ fontFamily: "Oswald", fontSize: 20, color: LIGHT.ink, lineHeight: 1 }}>{totalGrafico}</span>
+                  <span style={{ fontSize: 9.5, color: LIGHT.muted, marginTop: 2 }}>pagamentos</span>
+                </div>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 12.5 }}>
+                {dadosGrafico.map((d, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ width: 9, height: 9, borderRadius: "50%", flexShrink: 0, background: d.color }} />
+                    <span style={{ color: "#3A3324" }}>{d.name}</span>
+                    <b style={{ marginLeft: 14, fontVariantNumeric: "tabular-nums" }}>{d.value}</b>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()
+      ) : (
         <ResponsiveContainer width="100%" height={260}>
           <PieChart>
             <Pie data={dadosGrafico} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} label={(e) => <text x={e.x} y={e.y} textAnchor={e.textAnchor} fill={dark ? "#F5F3EC" : "#1B2027"} fontSize={12}>{`${e.name}: ${e.value}`}</text>}>
@@ -2378,17 +2565,15 @@ function PagamentosChart({ data, alunosFiltro, dark = false }) {
             <Legend wrapperStyle={dark ? { color: "#F5F3EC" } : undefined} />
           </PieChart>
         </ResponsiveContainer>
-      ) : (
-        <Empty dark={dark}>Sem pagamentos confirmados neste mês nem pendências no momento.</Empty>
       )}
       <div style={{ display: "flex", gap: 24, flexWrap: "wrap", marginTop: 10, paddingTop: 12, borderTop: dark ? "1px solid rgba(255,255,255,0.1)" : "1px solid #E7E2D6" }}>
         <div>
           <div style={{ fontSize: 11.5, color: dark ? "#9B9891" : "#8A8574", fontWeight: 600, textTransform: "uppercase" }}>Total confirmado no mês</div>
-          <div style={{ fontFamily: "Oswald", fontSize: 22, fontWeight: 700, color: "#4ADE80" }}>R$ {totalConfirmado.toFixed(2)}</div>
+          <div style={{ fontFamily: "Oswald", fontSize: 22, fontWeight: 700, color: corConfirmado }}>R$ {totalConfirmado.toFixed(2)}</div>
         </div>
         <div>
           <div style={{ fontSize: 11.5, color: dark ? "#9B9891" : "#8A8574", fontWeight: 600, textTransform: "uppercase" }}>Total pendente agora</div>
-          <div style={{ fontFamily: "Oswald", fontSize: 22, fontWeight: 700, color: "#FF6B6B" }}>R$ {totalPendente.toFixed(2)}</div>
+          <div style={{ fontFamily: "Oswald", fontSize: 22, fontWeight: 700, color: corPendente }}>R$ {totalPendente.toFixed(2)}</div>
         </div>
       </div>
     </Card>
@@ -2396,6 +2581,7 @@ function PagamentosChart({ data, alunosFiltro, dark = false }) {
 }
 
 function AlunosPorMesChart({ data, dark = false }) {
+  dark = dark && !useDesktopLight();
   const contagem = {};
   data.alunos.forEach((a) => { if (!a.matricula) return; const chave = a.matricula.slice(0, 7); contagem[chave] = (contagem[chave] || 0) + 1; });
   const chaves = Object.keys(contagem).sort();
@@ -2421,6 +2607,7 @@ function AlunosPorMesChart({ data, dark = false }) {
 }
 
 function AlunosPorMesLineChart({ data, alunosFiltro, dark = false, titulo }) {
+  dark = dark && !useDesktopLight();
   const alunosBase = alunosFiltro || data.alunos;
   const contagem = {};
   alunosBase.forEach((a) => { if (!a.matricula) return; const chave = a.matricula.slice(0, 7); contagem[chave] = (contagem[chave] || 0) + 1; });
@@ -2602,14 +2789,15 @@ function gerarRelatorioMensal(data, mes, onErro, alunosFiltro, tituloExtra) {
 }
 
 function RelatorioMensal({ data }) {
+  const light = useDesktopLight();
   const [mes, setMes] = useState(() => new Date().toISOString().slice(0, 7));
   const [erro, setErro] = useState("");
   return (
     <Card dark style={{ marginBottom: 14 }}>
-      <div style={{ ...blockTitleStyle, color: "#F5F3EC" }}>Relatório mensal</div>
-      <p style={{ fontSize: 12.5, color: "#9B9891", marginTop: 0 }}>Gera um relatório com total de alunos, pagamentos confirmados e pendentes do mês escolhido — abre em uma nova aba pronta para salvar como PDF (ou imprimir).</p>
+      <div style={light ? blockTitleStyle : { ...blockTitleStyle, color: "#F5F3EC" }}>Relatório mensal</div>
+      <p style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#9B9891", marginTop: 0 }}>Gera um relatório com total de alunos, pagamentos confirmados e pendentes do mês escolhido — abre em uma nova aba pronta para salvar como PDF (ou imprimir).</p>
       <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
-        <div style={{ flex: "0 1 180px", minWidth: 140 }}><Field label="Mês do relatório" labelColor="#9B9891"><input type="month" style={{ ...inputStyle, maxWidth: 170, background: "#0F1116", border: "1px solid rgba(255,255,255,0.14)", color: "#F5F3EC", colorScheme: "dark" }} value={mes} onChange={(e) => setMes(e.target.value)} /></Field></div>
+        <div style={{ flex: "0 1 180px", minWidth: 140 }}><Field label="Mês do relatório" labelColor={light ? LIGHT.muted : "#9B9891"}><input type="month" style={light ? { ...inputStyle, maxWidth: 170 } : { ...inputStyle, maxWidth: 170, background: "#0F1116", border: "1px solid rgba(255,255,255,0.14)", color: "#F5F3EC", colorScheme: "dark" }} value={mes} onChange={(e) => setMes(e.target.value)} /></Field></div>
         <Button icon={CreditCard} variant="gold" onClick={() => { setErro(""); gerarRelatorioMensal(data, mes, setErro); }}>Gerar relatório (PDF)</Button>
       </div>
       {erro && <div style={{ marginTop: 8, fontSize: 12.5, color: "#FF8A80", fontWeight: 600 }}>{erro}</div>}
@@ -2929,6 +3117,7 @@ function gerarRelatorioVendas(data, onErro, vendasFiltro, tituloExtra) {
 }
 
 function PresencaManualAdmin({ data, save }) {
+  const light = useDesktopLight();
   const [turmaId, setTurmaId] = useState(data.turmas[0]?.id || "");
   const [msg, setMsg] = useState("");
   const sessaoAtiva = data.sessoes.find((s) => s.treinoId === turmaId && s.ativa);
@@ -2949,9 +3138,9 @@ function PresencaManualAdmin({ data, save }) {
 
   return (
     <Card dark style={{ marginBottom: 14 }}>
-      <div style={{ ...blockTitleStyle, color: "#F5F3EC" }}>Marcar presença manual</div>
-      <p style={{ fontSize: 12.5, color: "#9B9891", marginTop: 0 }}>Para quando o aluno esqueceu o celular ou não conseguiu fazer o check-in por localização.</p>
-      <Field label="Turma" labelColor="#9B9891"><select style={{ ...inputStyle, background: "#0F1116", border: "1px solid rgba(255,255,255,0.14)", color: "#F5F3EC", colorScheme: "dark" }} value={turmaId} onChange={(e) => setTurmaId(e.target.value)}>{data.turmas.map((t) => <option key={t.id} value={t.id} style={{ background: "#1A1D24", color: "#F5F3EC" }}>{t.nome} — {t.horario}{t.horarioFim ? ` às ${t.horarioFim}` : ""}</option>)}</select></Field>
+      <div style={light ? { ...blockTitleStyle } : { ...blockTitleStyle, color: "#F5F3EC" }}>Marcar presença manual</div>
+      <p style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#9B9891", marginTop: 0 }}>Para quando o aluno esqueceu o celular ou não conseguiu fazer o check-in por localização.</p>
+      <Field label="Turma" labelColor={light ? LIGHT.muted : "#9B9891"}><select style={light ? inputStyle : { ...inputStyle, background: "#0F1116", border: "1px solid rgba(255,255,255,0.14)", color: "#F5F3EC", colorScheme: "dark" }} value={turmaId} onChange={(e) => setTurmaId(e.target.value)}>{data.turmas.map((t) => <option key={t.id} value={t.id} style={light ? undefined : { background: "#1A1D24", color: "#F5F3EC" }}>{t.nome} — {t.horario}{t.horarioFim ? ` às ${t.horarioFim}` : ""}</option>)}</select></Field>
       {!sessaoAtiva ? (
         <div style={{ marginTop: 10 }}><Button variant="gold" icon={CalendarCheck} onClick={abrirSessao}>Abrir check-in desta turma hoje</Button></div>
       ) : (
@@ -2960,11 +3149,11 @@ function PresencaManualAdmin({ data, save }) {
             {data.alunos.map((a) => {
               const presente = data.checkins.some((c) => c.sessaoId === sessaoAtiva.id && c.alunoId === a.id);
               return (
-                <div key={a.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 10px", background: "#12151B", borderRadius: 6, border: "1px solid rgba(255,255,255,0.08)", color: "#F5F3EC" }}>
+                <div key={a.id} style={light ? { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 10px", background: LIGHT.paper, borderRadius: 6, border: `1px solid ${LIGHT.line}`, color: LIGHT.text } : { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 10px", background: "#12151B", borderRadius: 6, border: "1px solid rgba(255,255,255,0.08)", color: "#F5F3EC" }}>
                   <span style={{ fontSize: 13 }}>{a.nome}</span>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <Tag ok={presente}>{presente ? "Presente" : "Ausente"}</Tag>
-                    <Button variant="ghost" onClick={() => alternarPresenca(a.id, presente)} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>{presente ? "Remover" : "Marcar presença"}</Button>
+                    <Button variant="ghost" onClick={() => alternarPresenca(a.id, presente)} style={ghostEscuroFallback(light)}>{presente ? "Remover" : "Marcar presença"}</Button>
                   </div>
                 </div>
               );
@@ -2979,12 +3168,13 @@ function PresencaManualAdmin({ data, save }) {
 }
 
 function RelatorioListaAlunosProfessor({ data, prof }) {
+  const light = useDesktopLight();
   const [erro, setErro] = useState("");
   const meusAlunos = data.alunos.filter((a) => a.professorId === prof.id);
   return (
-    <Card style={{ marginBottom: 16, background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}>
-      <div style={{ ...blockTitleStyle, color: "#F5F3EC" }}>Lista de alunos</div>
-      <p style={{ fontSize: 12.5, color: "#C9C4B4", marginTop: 0 }}>Gera um PDF com o total e a lista de todos os seus {meusAlunos.length} aluno(s) vinculado(s).</p>
+    <Card style={light ? { marginBottom: 16 } : { marginBottom: 16, background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}>
+      <div style={light ? blockTitleStyle : { ...blockTitleStyle, color: "#F5F3EC" }}>Lista de alunos</div>
+      <p style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#C9C4B4", marginTop: 0 }}>Gera um PDF com o total e a lista de todos os seus {meusAlunos.length} aluno(s) vinculado(s).</p>
       {meusAlunos.length === 0 ? (
         <Empty dark>Nenhum aluno vinculado a você ainda.</Empty>
       ) : (
@@ -2996,11 +3186,12 @@ function RelatorioListaAlunosProfessor({ data, prof }) {
 }
 
 function RelatorioListaAlunos({ data }) {
+  const light = useDesktopLight();
   const [erro, setErro] = useState("");
   return (
     <Card dark style={{ marginBottom: 14 }}>
-      <div style={{ ...blockTitleStyle, color: "#F5F3EC" }}>Lista de alunos</div>
-      <p style={{ fontSize: 12.5, color: "#9B9891", marginTop: 0 }}>Gera um PDF com todos os alunos cadastrados: faixa, categoria, telefone, professor, plano e status de pagamento.</p>
+      <div style={light ? blockTitleStyle : { ...blockTitleStyle, color: "#F5F3EC" }}>Lista de alunos</div>
+      <p style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#9B9891", marginTop: 0 }}>Gera um PDF com todos os alunos cadastrados: faixa, categoria, telefone, professor, plano e status de pagamento.</p>
       <Button icon={Users} variant="gold" onClick={() => { setErro(""); gerarRelatorioListaAlunos(data, setErro); }}>Gerar lista de alunos (PDF)</Button>
       {erro && <div style={{ marginTop: 8, fontSize: 12.5, color: "#FF8A80", fontWeight: 600 }}>{erro}</div>}
     </Card>
@@ -3008,14 +3199,15 @@ function RelatorioListaAlunos({ data }) {
 }
 
 function RelatorioCheckins({ data }) {
+  const light = useDesktopLight();
   const [dataSel, setDataSel] = useState(hoje());
   const [erro, setErro] = useState("");
   return (
     <Card dark style={{ marginBottom: 14 }}>
-      <div style={{ ...blockTitleStyle, color: "#F5F3EC" }}>Relatório de check-ins por data</div>
-      <p style={{ fontSize: 12.5, color: "#9B9891", marginTop: 0 }}>Escolha uma data e veja todos os alunos que fizeram check-in naquele dia — abre pronto para salvar como PDF.</p>
+      <div style={light ? blockTitleStyle : { ...blockTitleStyle, color: "#F5F3EC" }}>Relatório de check-ins por data</div>
+      <p style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#9B9891", marginTop: 0 }}>Escolha uma data e veja todos os alunos que fizeram check-in naquele dia — abre pronto para salvar como PDF.</p>
       <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
-        <div style={{ flex: "0 1 180px", minWidth: 140 }}><Field label="Data" labelColor="#9B9891"><input type="date" style={{ ...inputStyle, maxWidth: 170, background: "#0F1116", border: "1px solid rgba(255,255,255,0.14)", color: "#F5F3EC", colorScheme: "dark" }} value={dataSel} onChange={(e) => setDataSel(e.target.value)} /></Field></div>
+        <div style={{ flex: "0 1 180px", minWidth: 140 }}><Field label="Data" labelColor={light ? LIGHT.muted : "#9B9891"}><input type="date" style={light ? { ...inputStyle, maxWidth: 170 } : { ...inputStyle, maxWidth: 170, background: "#0F1116", border: "1px solid rgba(255,255,255,0.14)", color: "#F5F3EC", colorScheme: "dark" }} value={dataSel} onChange={(e) => setDataSel(e.target.value)} /></Field></div>
         <Button icon={CalendarCheck} variant="gold" onClick={() => { setErro(""); gerarRelatorioCheckins(data, dataSel, setErro); }}>Gerar relatório (PDF)</Button>
       </div>
       {erro && <div style={{ marginTop: 8, fontSize: 12.5, color: "#FF8A80", fontWeight: 600 }}>{erro}</div>}
@@ -3024,6 +3216,7 @@ function RelatorioCheckins({ data }) {
 }
 
 function BuscaAluno({ alunos, alunoId, onSelecionar, dark = true, disabled = false }) {
+  dark = dark && !useDesktopLight();
   const alunoSelecionado = alunos.find((a) => a.id === alunoId);
   const [texto, setTexto] = useState(alunoSelecionado?.nome || "");
   const [aberto, setAberto] = useState(false);
@@ -3108,6 +3301,7 @@ function BuscaAluno({ alunos, alunoId, onSelecionar, dark = true, disabled = fal
 }
 
 function CheckinRetroativoProfessor({ data, save, prof, dark = true }) {
+  dark = dark && !useDesktopLight();
   const meusAlunos = data.alunos.filter((a) => a.professorId === prof.id);
   const [alunoId, setAlunoId] = useState(meusAlunos[0]?.id || "");
   const [dataSel, setDataSel] = useState(hoje());
@@ -3216,6 +3410,7 @@ function CheckinRetroativoProfessor({ data, save, prof, dark = true }) {
 }
 
 function PresencaManualProfessor({ data, save, prof, dark = true }) {
+  dark = dark && !useDesktopLight();
   const turmasDisponiveis = data.turmas.filter((t) => !t.professorId || t.professorId === prof.id);
   const [turmaId, setTurmaId] = useState(turmasDisponiveis[0]?.id || "");
   const meusAlunos = data.alunos.filter((a) => a.professorId === prof.id);
@@ -3270,6 +3465,8 @@ function PresencaManualProfessor({ data, save, prof, dark = true }) {
 }
 
 function AjustarAulasInline({ onAjustar }) {
+  const light = useDesktopLight();
+  const ghostBranco = light ? undefined : { color: "#FFFFFF", border: "1px solid rgba(255,255,255,0.2)" };
   const [valor, setValor] = useState("");
   const [acao, setAcao] = useState(null);
 
@@ -3283,9 +3480,9 @@ function AjustarAulasInline({ onAjustar }) {
   if (acao) {
     return (
       <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-        <span style={{ fontSize: 11.5, color: "#C9C4B4", fontWeight: 600 }}>{acao === "add" ? "Adicionar" : "Remover"} {valor} aula(s)?</span>
+        <span style={{ fontSize: 11.5, color: light ? LIGHT.muted : "#C9C4B4", fontWeight: 600 }}>{acao === "add" ? "Adicionar" : "Remover"} {valor} aula(s)?</span>
         <Button variant="gold" onClick={confirmar}>Sim</Button>
-        <Button variant="ghost" style={{ color: "#FFFFFF", border: "1px solid rgba(255,255,255,0.2)" }} onClick={() => setAcao(null)}>Não</Button>
+        <Button variant="ghost" style={ghostBranco} onClick={() => setAcao(null)}>Não</Button>
       </span>
     );
   }
@@ -3293,13 +3490,14 @@ function AjustarAulasInline({ onAjustar }) {
   return (
     <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
       <input type="number" min="1" style={{ ...inputStyle, width: 64, padding: "6px 8px" }} value={valor} onChange={(e) => setValor(e.target.value)} placeholder="nº aulas" />
-      <Button variant="ghost" style={{ color: "#FFFFFF", border: "1px solid rgba(255,255,255,0.2)" }} onClick={() => pedirConfirmacao("add")}>+ Aulas</Button>
-      <Button variant="ghost" style={{ color: "#FFFFFF", border: "1px solid rgba(255,255,255,0.2)" }} onClick={() => pedirConfirmacao("remove")}>− Aulas</Button>
+      <Button variant="ghost" style={ghostBranco} onClick={() => pedirConfirmacao("add")}>+ Aulas</Button>
+      <Button variant="ghost" style={ghostBranco} onClick={() => pedirConfirmacao("remove")}>− Aulas</Button>
     </div>
   );
 }
 
 function RecadoMestreProfessor({ data, prof, dark = true }) {
+  dark = dark && !useDesktopLight();
   const [arquivo, setArquivo] = useState(null);
   const [enviando, setEnviando] = useState(false);
   const [progresso, setProgresso] = useState(0);
@@ -3378,6 +3576,7 @@ function RecadoMestreProfessor({ data, prof, dark = true }) {
 }
 
 function AlunosPertoDeGraduar({ data, prof, dark = true }) {
+  dark = dark && !useDesktopLight();
   const LIMITE_AULAS = 5;
   const candidatos = data.alunos
     .filter((a) => a.professorId === prof.id)
@@ -3407,6 +3606,7 @@ function AlunosPertoDeGraduar({ data, prof, dark = true }) {
 }
 
 function ContadorCheckinsAula({ data, dark = true, prof = null }) {
+  dark = dark && !useDesktopLight();
   const turmasDisponiveis = prof ? data.turmas.filter((t) => !t.professorId || t.professorId === prof.id) : data.turmas;
   const [turmaId, setTurmaId] = useState(turmasDisponiveis[0]?.id || "");
   const idsSessoesDaTurma = new Set(data.sessoes.filter((s) => s.treinoId === turmaId).map((s) => s.id));
@@ -3418,7 +3618,7 @@ function ContadorCheckinsAula({ data, dark = true, prof = null }) {
         <div style={{ flex: "0 1 220px", minWidth: 160 }}>
           <Field label="Selecionar turma" labelColor={dark ? "#C9C4B4" : undefined}>
             <select style={dark ? inputStyleDark : inputStyle} value={turmaId} onChange={(e) => setTurmaId(e.target.value)}>
-              {turmasDisponiveis.map((t) => <option key={t.id} value={t.id} style={{ background: "#1A1D24", color: "#F5F3EC" }}>{t.nome} — {t.horario}{t.horarioFim ? ` às ${t.horarioFim}` : ""}</option>)}
+              {turmasDisponiveis.map((t) => <option key={t.id} value={t.id} style={dark ? { background: "#1A1D24", color: "#F5F3EC" } : undefined}>{t.nome} — {t.horario}{t.horarioFim ? ` às ${t.horarioFim}` : ""}</option>)}
             </select>
           </Field>
         </div>
@@ -3429,6 +3629,7 @@ function ContadorCheckinsAula({ data, dark = true, prof = null }) {
 }
 
 function RelatorioCheckinsProfessor({ data, prof, dark = true }) {
+  dark = dark && !useDesktopLight();
   const [dataSel, setDataSel] = useState(hoje());
   const [erro, setErro] = useState("");
   const meusAlunos = data.alunos.filter((a) => a.professorId === prof.id);
@@ -3452,6 +3653,7 @@ function RelatorioCheckinsProfessor({ data, prof, dark = true }) {
 }
 
 function RelatorioMensalProfessor({ data, prof, dark = true }) {
+  dark = dark && !useDesktopLight();
   const [mes, setMes] = useState(() => new Date().toISOString().slice(0, 7));
   const [erro, setErro] = useState("");
   const meusAlunos = data.alunos.filter((a) => a.professorId === prof.id);
@@ -3477,7 +3679,8 @@ function RelatorioMensalProfessor({ data, prof, dark = true }) {
 }
 
 function FinanceiroAdmin({ data, save }) {
-  const darBaixa = (alunoId) => darBaixaEm(data, save, alunoId);
+  const light = useDesktopLight();
+  const darBaixa = (alunoId, valorProdutos) => darBaixaEm(data, save, alunoId, valorProdutos);
   const desfazerBaixa = (alunoId) => desfazerBaixaEm(data, save, alunoId);
   const pendentes = data.alunos.filter((a) => !statusPagamento(a, data.planos).emDia);
   const pagamentosRecentes = data.alunos.flatMap((a) => (a.pagamentos || []).map((p) => ({ ...p, alunoId: a.id, alunoNome: a.nome }))).sort((x, y) => y.data.localeCompare(x.data)).slice(0, 40);
@@ -3492,31 +3695,34 @@ function FinanceiroAdmin({ data, save }) {
       <RelatorioMensal data={data} />
       <PagamentosChart data={data} dark />
 
-      <div style={{ ...blockTitleStyle, color: "#F5F3EC" }}>Pagamentos pendentes</div>
+      <div style={light ? blockTitleStyle : { ...blockTitleStyle, color: "#F5F3EC" }}>Pagamentos pendentes</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
         {pendentes.map((a) => {
           const { plano, vencimento } = statusPagamento(a, data.planos);
           return (
             <Card dark key={a.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: 12, flexWrap: "wrap", gap: 8 }}>
               <div>
-                <div style={{ fontWeight: 600, fontSize: 14, color: "#F5F3EC" }}>{a.nome}</div>
-                <div style={{ fontSize: 12, color: "#9B9891" }}>{plano?.nome || "sem plano"} · R$ {plano?.valor ?? 0} {vencimento && `· venceu em ${new Date(vencimento + "T00:00:00").toLocaleDateString("pt-BR")}`}</div>
+                <div style={{ fontWeight: 600, fontSize: 14, color: light ? LIGHT.text : "#F5F3EC" }}>{a.nome}</div>
+                <div style={{ fontSize: 12, color: light ? LIGHT.muted : "#9B9891" }}>{plano?.nome || "sem plano"} · R$ {plano?.valor ?? 0} {vencimento && `· venceu em ${new Date(vencimento + "T00:00:00").toLocaleDateString("pt-BR")}`}</div>
               </div>
-              <Button variant="gold" onClick={() => darBaixa(a.id)}>Dar baixa</Button>
+              <DarBaixaControle mensalidade={plano?.valor || 0} onConfirmar={(valorProdutos) => darBaixa(a.id, valorProdutos)} />
             </Card>
           );
         })}
         {pendentes.length === 0 && <Empty dark>Nenhum pagamento pendente 🎉</Empty>}
       </div>
 
-      <div style={{ ...blockTitleStyle, color: "#F5F3EC" }}>Pagamentos realizados (recentes)</div>
-      <p style={{ fontSize: 12, color: "#9B9891", marginTop: 0 }}>Deu baixa por engano? Só o pagamento mais recente de cada aluno pode ser desfeito.</p>
+      <div style={light ? blockTitleStyle : { ...blockTitleStyle, color: "#F5F3EC" }}>Pagamentos realizados (recentes)</div>
+      <p style={{ fontSize: 12, color: light ? LIGHT.muted : "#9B9891", marginTop: 0 }}>Deu baixa por engano? Só o pagamento mais recente de cada aluno pode ser desfeito.</p>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {pagamentosRecentes.map((p) => (
           <Card dark key={p.id} style={{ padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
             <div>
-              <span style={{ fontWeight: 600, fontSize: 13.5, color: "#F5F3EC" }}>{p.alunoNome}</span>
-              <span style={{ fontSize: 13, color: "#9B9891" }}> · R$ {p.valor} · {new Date(p.data + "T00:00:00").toLocaleDateString("pt-BR")}</span>
+              <span style={{ fontWeight: 600, fontSize: 13.5, color: light ? LIGHT.text : "#F5F3EC" }}>{p.alunoNome}</span>
+              <span style={{ fontSize: 13, color: light ? LIGHT.muted : "#9B9891" }}> · R$ {p.valor} · {new Date(p.data + "T00:00:00").toLocaleDateString("pt-BR")}</span>
+              {p.valorProdutos > 0 && (
+                <div style={{ fontSize: 11.5, color: light ? LIGHT.muted : "#9B9891" }}>Mensalidade R$ {p.valorMensalidade?.toFixed(2)} + produtos R$ {p.valorProdutos.toFixed(2)}</div>
+              )}
             </div>
             {ultimoPagamentoIdPorAluno[p.alunoId] === p.id && (
               <ConfirmDelete onConfirm={() => desfazerBaixa(p.alunoId)} />
@@ -3558,6 +3764,7 @@ function AvisoForm({ onSave, onCancel }) {
 }
 
 function AvisosProfessor({ data, save, prof, dark = false }) {
+  dark = dark && !useDesktopLight();
   const [novo, setNovo] = useState(false);
   const avisosVisiveis = [...(data.avisos || [])]
     .filter((a) => !a.professorId || a.professorId === prof.id)
@@ -3602,6 +3809,7 @@ function AvisosProfessor({ data, save, prof, dark = false }) {
 }
 
 function AvisosAdmin({ data, save }) {
+  const light = useDesktopLight();
   const [novo, setNovo] = useState(false);
   const avisos = [...(data.avisos || [])].sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || ""));
 
@@ -3615,7 +3823,7 @@ function AvisosAdmin({ data, save }) {
 
   return (
     <div>
-      <p style={{ fontSize: 12.5, color: "#9B9891", marginTop: 0 }}>Avisos, notícias e próximos eventos publicados aqui aparecem na área do aluno, com notificação no aparelho quando o app é aberto.</p>
+      <p style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#9B9891", marginTop: 0 }}>Avisos, notícias e próximos eventos publicados aqui aparecem na área do aluno, com notificação no aparelho quando o app é aberto.</p>
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
         <Button icon={Plus} onClick={() => setNovo(true)}>Novo aviso</Button>
       </div>
@@ -3628,10 +3836,10 @@ function AvisosAdmin({ data, save }) {
                 <span style={{ fontSize: 10.5, fontWeight: 700, color: "#C9A227", textTransform: "uppercase" }}>
                   {a.tipo || "Aviso"}{a.professorId ? ` · Prof. ${data.professores.find((p) => p.id === a.professorId)?.nome || "?"}` : " · Todos"}
                 </span>
-                <div style={{ fontWeight: 700, fontSize: 14, color: "#F5F3EC" }}>{a.titulo}</div>
-                {a.mensagem && <div style={{ fontSize: 12.5, color: "#9B9891", marginTop: 2 }}>{a.mensagem}</div>}
+                <div style={{ fontWeight: 700, fontSize: 14, color: light ? LIGHT.text : "#F5F3EC" }}>{a.titulo}</div>
+                {a.mensagem && <div style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#9B9891", marginTop: 2 }}>{a.mensagem}</div>}
                 {a.dataEvento && <div style={{ fontSize: 12, color: "#C9A227", fontWeight: 600, marginTop: 4 }}>Data do evento: {new Date(a.dataEvento + "T00:00:00").toLocaleDateString("pt-BR")}</div>}
-                <div style={{ fontSize: 11, color: "#9B9891", marginTop: 4 }}>{new Date(a.criadoEm).toLocaleString("pt-BR")}</div>
+                <div style={{ fontSize: 11, color: light ? LIGHT.muted : "#9B9891", marginTop: 4 }}>{new Date(a.criadoEm).toLocaleString("pt-BR")}</div>
               </div>
               <ConfirmDelete onConfirm={() => remover(a.id)} />
             </div>
@@ -3708,6 +3916,7 @@ function VideoForm({ unidades, onSave, onCancel }) {
 }
 
 function VideosProfessor({ data, save, prof }) {
+  const light = useDesktopLight();
   const [novo, setNovo] = useState(false);
   const videosVisiveis = [...(data.videos || [])]
     .filter((v) => !v.professorId || v.professorId === prof.id)
@@ -3722,7 +3931,7 @@ function VideosProfessor({ data, save, prof }) {
 
   return (
     <div>
-      <p style={{ fontSize: 12.5, color: "#9B9891", marginTop: 0 }}>Vídeos que você publicar aqui aparecem só pros seus alunos vinculados — cole um link do YouTube ou envie um arquivo MP4 direto. Também dá pra vincular a uma unidade específica.</p>
+      <p style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#9B9891", marginTop: 0 }}>Vídeos que você publicar aqui aparecem só pros seus alunos vinculados — cole um link do YouTube ou envie um arquivo MP4 direto. Também dá pra vincular a uma unidade específica.</p>
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
         <Button icon={Plus} onClick={() => setNovo(true)}>Novo vídeo</Button>
       </div>
@@ -3734,8 +3943,8 @@ function VideosProfessor({ data, save, prof }) {
           <Card dark key={v.id} style={{ padding: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
             <div>
               <span style={{ fontSize: 10, fontWeight: 700, color: "#C9A227", textTransform: "uppercase" }}>{!v.professorId ? "Geral (todos)" : "Só seus alunos"}{unidadeDoVideo ? ` · ${unidadeDoVideo.nome}` : ""}</span>
-              <div style={{ fontWeight: 700, fontSize: 14, color: "#F5F3EC" }}>{v.titulo}</div>
-              {v.legenda && <div style={{ fontSize: 12, color: "#9B9891" }}>{v.legenda}</div>}
+              <div style={{ fontWeight: 700, fontSize: 14, color: light ? LIGHT.text : "#F5F3EC" }}>{v.titulo}</div>
+              {v.legenda && <div style={{ fontSize: 12, color: light ? LIGHT.muted : "#9B9891" }}>{v.legenda}</div>}
               <a href={v.url} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: "#C9A227" }}>{v.url.includes("/storage/v1/") ? "Arquivo enviado" : v.url}</a>
             </div>
             {v.professorId === prof.id && <ConfirmDelete onConfirm={() => remover(v.id)} />}
@@ -3749,6 +3958,7 @@ function VideosProfessor({ data, save, prof }) {
 }
 
 function VideosAdmin({ data, save }) {
+  const light = useDesktopLight();
   const [novo, setNovo] = useState(false);
   const videos = [...(data.videos || [])].sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || ""));
 
@@ -3762,7 +3972,7 @@ function VideosAdmin({ data, save }) {
 
   return (
     <div>
-      <p style={{ fontSize: 12.5, color: "#9B9891", marginTop: 0 }}>Vídeos de técnicas e posições para os alunos assistirem dentro do próprio app — cole um link do YouTube ou envie um arquivo MP4 direto. Vincule a uma unidade pra ele aparecer só pros alunos de lá.</p>
+      <p style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#9B9891", marginTop: 0 }}>Vídeos de técnicas e posições para os alunos assistirem dentro do próprio app — cole um link do YouTube ou envie um arquivo MP4 direto. Vincule a uma unidade pra ele aparecer só pros alunos de lá.</p>
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
         <Button icon={Plus} onClick={() => setNovo(true)}>Novo vídeo</Button>
       </div>
@@ -3774,14 +3984,14 @@ function VideosAdmin({ data, save }) {
               <span style={{ fontSize: 10, fontWeight: 700, color: "#C9A227", textTransform: "uppercase" }}>
                 {v.professorId ? `Prof. ${data.professores.find((p) => p.id === v.professorId)?.nome || "?"}` : "Todos"}
               </span>
-              <div style={{ fontWeight: 700, fontSize: 14, color: "#F5F3EC" }}>{v.titulo}</div>
-              {v.legenda && <div style={{ fontSize: 12, color: "#9B9891" }}>{v.legenda}</div>}
+              <div style={{ fontWeight: 700, fontSize: 14, color: light ? LIGHT.text : "#F5F3EC" }}>{v.titulo}</div>
+              {v.legenda && <div style={{ fontSize: 12, color: light ? LIGHT.muted : "#9B9891" }}>{v.legenda}</div>}
               <a href={v.url} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: "#C9A227" }}>{v.url.includes("/storage/v1/") ? "Arquivo enviado" : v.url}</a>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <select style={{ ...inputStyleDark, width: 160 }} value={v.unidadeId || ""} onChange={(e) => atualizarUnidade(v.id, e.target.value)}>
-                <option value="" style={{ background: "#1A1D24", color: "#F5F3EC" }}>Todas as unidades</option>
-                {(data.unidades || []).map((u) => <option key={u.id} value={u.id} style={{ background: "#1A1D24", color: "#F5F3EC" }}>{u.nome}</option>)}
+              <select style={light ? { ...inputStyle, width: 160 } : { ...inputStyleDark, width: 160 }} value={v.unidadeId || ""} onChange={(e) => atualizarUnidade(v.id, e.target.value)}>
+                <option value="" style={light ? undefined : { background: "#1A1D24", color: "#F5F3EC" }}>Todas as unidades</option>
+                {(data.unidades || []).map((u) => <option key={u.id} value={u.id} style={light ? undefined : { background: "#1A1D24", color: "#F5F3EC" }}>{u.nome}</option>)}
               </select>
               <ConfirmDelete onConfirm={() => remover(v.id)} />
             </div>
@@ -3794,6 +4004,7 @@ function VideosAdmin({ data, save }) {
 }
 
 function ProdutoForm({ onSave, onCancel }) {
+  const light = useDesktopLight();
   const [nome, setNome] = useState("");
   const [valor, setValor] = useState("");
   const [fotos, setFotos] = useState([]);
@@ -3835,10 +4046,10 @@ function ProdutoForm({ onSave, onCancel }) {
   return (
     <Card dark style={{ marginBottom: 12 }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <Field label="Nome do produto" labelColor="#C9C4B4"><input style={inputStyleDark} value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex: Kimono Cia Paulista A2" /></Field>
-        <Field label="Valor (R$)" labelColor="#C9C4B4"><input type="number" min="0" step="0.01" style={inputStyleDark} value={valor} onChange={(e) => setValor(e.target.value)} placeholder="0,00" /></Field>
+        <Field label="Nome do produto" labelColor={light ? LIGHT.muted : "#C9C4B4"}><input style={light ? inputStyle : inputStyleDark} value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex: Kimono Cia Paulista A2" /></Field>
+        <Field label="Valor (R$)" labelColor={light ? LIGHT.muted : "#C9C4B4"}><input type="number" min="0" step="0.01" style={light ? inputStyle : inputStyleDark} value={valor} onChange={(e) => setValor(e.target.value)} placeholder="0,00" /></Field>
         <div>
-          <span style={{ fontSize: 12, fontWeight: 600, color: "#C9C4B4", textTransform: "uppercase", letterSpacing: 0.4 }}>Fotos</span>
+          <span style={{ fontSize: 12, fontWeight: 600, color: light ? LIGHT.muted : "#C9C4B4", textTransform: "uppercase", letterSpacing: 0.4 }}>Fotos</span>
           {fotos.length > 0 && (
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
               {fotos.map((url) => (
@@ -3852,12 +4063,12 @@ function ProdutoForm({ onSave, onCancel }) {
             </div>
           )}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-            <Button variant="ghost" style={{ color: "#FFFFFF", border: "1px solid rgba(255,255,255,0.2)" }} onClick={() => inputCameraRef.current?.click()} disabled={enviando}>📷 Tirar foto</Button>
-            <Button variant="ghost" style={{ color: "#FFFFFF", border: "1px solid rgba(255,255,255,0.2)" }} onClick={() => inputGaleriaRef.current?.click()} disabled={enviando}>🖼️ Escolher da galeria</Button>
+            <Button variant="ghost" style={light ? undefined : { color: "#FFFFFF", border: "1px solid rgba(255,255,255,0.2)" }} onClick={() => inputCameraRef.current?.click()} disabled={enviando}>📷 Tirar foto</Button>
+            <Button variant="ghost" style={light ? undefined : { color: "#FFFFFF", border: "1px solid rgba(255,255,255,0.2)" }} onClick={() => inputGaleriaRef.current?.click()} disabled={enviando}>🖼️ Escolher da galeria</Button>
           </div>
           <input ref={inputCameraRef} type="file" accept="image/*" capture="environment" hidden onChange={onArquivo} />
           <input ref={inputGaleriaRef} type="file" accept="image/*" multiple hidden onChange={onArquivo} />
-          {enviando && <div style={{ fontSize: 12, color: "#C9C4B4", marginTop: 6 }}>Enviando foto...</div>}
+          {enviando && <div style={{ fontSize: 12, color: light ? LIGHT.muted : "#C9C4B4", marginTop: 6 }}>Enviando foto...</div>}
         </div>
         {erro && <div style={{ fontSize: 12, color: "#FF8A80" }}>{erro}</div>}
       </div>
@@ -3870,6 +4081,7 @@ function ProdutoForm({ onSave, onCancel }) {
 }
 
 function ProdutosProfessor({ data, save, prof }) {
+  const light = useDesktopLight();
   const [novo, setNovo] = useState(false);
   const meusProdutos = [...(data.produtos || [])]
     .filter((p) => p.professorId === prof.id)
@@ -3888,7 +4100,7 @@ function ProdutosProfessor({ data, save, prof }) {
 
   return (
     <div>
-      <p style={{ fontSize: 12.5, color: "#9B9891", marginTop: 0 }}>Produtos que você cadastrar aqui aparecem pros seus alunos vinculados verem (kimonos, bonés, patches etc.) — é só pra divulgar, a venda combina direto com o aluno.</p>
+      <p style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#9B9891", marginTop: 0 }}>Produtos que você cadastrar aqui aparecem pros seus alunos vinculados verem (kimonos, bonés, patches etc.) — é só pra divulgar, a venda combina direto com o aluno.</p>
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
         <Button icon={Plus} onClick={() => setNovo(true)}>Novo produto</Button>
       </div>
@@ -3902,7 +4114,7 @@ function ProdutosProfessor({ data, save, prof }) {
               <div style={{ width: 52, height: 52, borderRadius: 8, background: "rgba(255,255,255,0.06)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>🛍️</div>
             )}
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: 14, color: "#F5F3EC" }}>{p.nome}</div>
+              <div style={{ fontWeight: 700, fontSize: 14, color: light ? LIGHT.text : "#F5F3EC" }}>{p.nome}</div>
               <div style={{ fontSize: 13, color: "#C9A227", fontWeight: 600 }}>R$ {p.valor.toFixed(2)}</div>
             </div>
             <ConfirmDelete onConfirm={() => remover(p.id)} />
@@ -3915,6 +4127,7 @@ function ProdutosProfessor({ data, save, prof }) {
 }
 
 function VendaForm({ produtos, alunos, onSave, onCancel }) {
+  const light = useDesktopLight();
   const [alunoId, setAlunoId] = useState(alunos[0]?.id || "");
   const [produtoId, setProdutoId] = useState(produtos[0]?.id || "outro");
   const [nomeCustom, setNomeCustom] = useState("");
@@ -3939,34 +4152,35 @@ function VendaForm({ produtos, alunos, onSave, onCancel }) {
   return (
     <Card dark style={{ marginBottom: 12 }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <Field label="Aluno" labelColor="#C9C4B4">
-          <select style={inputStyleDark} value={alunoId} onChange={(e) => setAlunoId(e.target.value)}>
+        <Field label="Aluno" labelColor={light ? LIGHT.muted : "#C9C4B4"}>
+          <select style={light ? inputStyle : inputStyleDark} value={alunoId} onChange={(e) => setAlunoId(e.target.value)}>
             {alunos.length === 0 && <option value="">Nenhum aluno vinculado</option>}
-            {alunos.map((a) => <option key={a.id} value={a.id} style={{ background: "#1A1D24", color: "#F5F3EC" }}>{a.nome}</option>)}
+            {alunos.map((a) => <option key={a.id} value={a.id} style={light ? undefined : { background: "#1A1D24", color: "#F5F3EC" }}>{a.nome}</option>)}
           </select>
         </Field>
-        <Field label="Produto" labelColor="#C9C4B4">
-          <select style={inputStyleDark} value={produtoId} onChange={(e) => selecionarProduto(e.target.value)}>
-            {produtos.map((p) => <option key={p.id} value={p.id} style={{ background: "#1A1D24", color: "#F5F3EC" }}>{p.nome} — R$ {p.valor.toFixed(2)}</option>)}
-            <option value="outro" style={{ background: "#1A1D24", color: "#F5F3EC" }}>Outro (não cadastrado)</option>
+        <Field label="Produto" labelColor={light ? LIGHT.muted : "#C9C4B4"}>
+          <select style={light ? inputStyle : inputStyleDark} value={produtoId} onChange={(e) => selecionarProduto(e.target.value)}>
+            {produtos.map((p) => <option key={p.id} value={p.id} style={light ? undefined : { background: "#1A1D24", color: "#F5F3EC" }}>{p.nome} — R$ {p.valor.toFixed(2)}</option>)}
+            <option value="outro" style={light ? undefined : { background: "#1A1D24", color: "#F5F3EC" }}>Outro (não cadastrado)</option>
           </select>
         </Field>
         {produtoId === "outro" && (
-          <Field label="Nome do produto" labelColor="#C9C4B4"><input style={inputStyleDark} value={nomeCustom} onChange={(e) => setNomeCustom(e.target.value)} placeholder="Ex: Faixa avulsa" /></Field>
+          <Field label="Nome do produto" labelColor={light ? LIGHT.muted : "#C9C4B4"}><input style={light ? inputStyle : inputStyleDark} value={nomeCustom} onChange={(e) => setNomeCustom(e.target.value)} placeholder="Ex: Faixa avulsa" /></Field>
         )}
-        <Field label="Valor da venda (R$)" labelColor="#C9C4B4"><input type="number" min="0" step="0.01" style={inputStyleDark} value={valor} onChange={(e) => setValor(e.target.value)} placeholder="0,00" /></Field>
-        <p style={{ fontSize: 11.5, color: "#9B9891", margin: 0 }}>O valor já vem preenchido com o preço cadastrado do produto — pode deixar como está ou editar (ex: desconto, combo).</p>
-        <Field label="Data da venda" labelColor="#C9C4B4"><input type="date" style={{ ...inputStyleDark, maxWidth: "100%" }} value={dataVenda} onChange={(e) => setDataVenda(e.target.value)} /></Field>
+        <Field label="Valor da venda (R$)" labelColor={light ? LIGHT.muted : "#C9C4B4"}><input type="number" min="0" step="0.01" style={light ? inputStyle : inputStyleDark} value={valor} onChange={(e) => setValor(e.target.value)} placeholder="0,00" /></Field>
+        <p style={{ fontSize: 11.5, color: light ? LIGHT.muted : "#9B9891", margin: 0 }}>O valor já vem preenchido com o preço cadastrado do produto — pode deixar como está ou editar (ex: desconto, combo).</p>
+        <Field label="Data da venda" labelColor={light ? LIGHT.muted : "#C9C4B4"}><input type="date" style={light ? { ...inputStyle, maxWidth: "100%" } : { ...inputStyleDark, maxWidth: "100%" }} value={dataVenda} onChange={(e) => setDataVenda(e.target.value)} /></Field>
       </div>
       <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
         <ConfirmButton dark onConfirm={submit}>Registrar venda</ConfirmButton>
-        <Button variant="ghost" icon={X} style={{ color: "#FFFFFF", border: "1px solid rgba(255,255,255,0.2)" }} onClick={onCancel}>Cancelar</Button>
+        <Button variant="ghost" icon={X} style={light ? undefined : { color: "#FFFFFF", border: "1px solid rgba(255,255,255,0.2)" }} onClick={onCancel}>Cancelar</Button>
       </div>
     </Card>
   );
 }
 
 function VendasProfessor({ data, save, prof }) {
+  const light = useDesktopLight();
   const [novo, setNovo] = useState(false);
   const meusAlunos = data.alunos.filter((a) => a.professorId === prof.id);
   const meusProdutos = (data.produtos || []).filter((p) => p.professorId === prof.id);
@@ -3986,9 +4200,9 @@ function VendasProfessor({ data, save, prof }) {
 
   return (
     <div>
-      <p style={{ fontSize: 12.5, color: "#9B9891", marginTop: 0 }}>Registre aqui as vendas de produtos pros seus alunos — vale tanto pra um produto já cadastrado quanto pra algo avulso (não precisa estar na lista de produtos).</p>
+      <p style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#9B9891", marginTop: 0 }}>Registre aqui as vendas de produtos pros seus alunos — vale tanto pra um produto já cadastrado quanto pra algo avulso (não precisa estar na lista de produtos).</p>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
-        <div style={{ fontSize: 13, color: "#C9C4B4" }}>{minhasVendas.length} venda(s) · total <span style={{ color: "#C9A227", fontWeight: 700 }}>R$ {totalVendido.toFixed(2)}</span></div>
+        <div style={{ fontSize: 13, color: light ? LIGHT.muted : "#C9C4B4" }}>{minhasVendas.length} venda(s) · total <span style={{ color: "#C9A227", fontWeight: 700 }}>R$ {totalVendido.toFixed(2)}</span></div>
         <Button icon={Plus} onClick={() => setNovo(true)}>Registrar venda</Button>
       </div>
       {novo && <VendaForm produtos={meusProdutos} alunos={meusAlunos} onCancel={() => setNovo(false)} onSave={adicionar} />}
@@ -3998,8 +4212,8 @@ function VendasProfessor({ data, save, prof }) {
           return (
             <Card dark key={v.id} style={{ padding: 12, display: "flex", alignItems: "center", gap: 10 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 14, color: "#F5F3EC" }}>{v.produtoNome}</div>
-                <div style={{ fontSize: 12, color: "#9B9891" }}>{aluno?.nome || "Aluno removido"} · {v.data ? new Date(v.data + "T00:00:00").toLocaleDateString("pt-BR") : "—"}</div>
+                <div style={{ fontWeight: 700, fontSize: 14, color: light ? LIGHT.text : "#F5F3EC" }}>{v.produtoNome}</div>
+                <div style={{ fontSize: 12, color: light ? LIGHT.muted : "#9B9891" }}>{aluno?.nome || "Aluno removido"} · {v.data ? new Date(v.data + "T00:00:00").toLocaleDateString("pt-BR") : "—"}</div>
               </div>
               <div style={{ fontSize: 13, color: "#C9A227", fontWeight: 700, flexShrink: 0 }}>R$ {v.valor.toFixed(2)}</div>
               <ConfirmDelete onConfirm={() => remover(v.id)} />
@@ -4013,6 +4227,7 @@ function VendasProfessor({ data, save, prof }) {
 }
 
 function TurmasProfessor({ data, save, prof }) {
+  const light = useDesktopLight();
   const [nova, setNova] = useState(false);
   const [editando, setEditando] = useState(null);
   const minhasTurmas = data.turmas.filter((t) => t.professorId === prof.id);
@@ -4034,7 +4249,7 @@ function TurmasProfessor({ data, save, prof }) {
 
   return (
     <div>
-      <p style={{ fontSize: 12.5, color: "#9B9891", marginTop: 0 }}>Turmas que você cadastrar aqui aparecem na grade de horários dos seus alunos vinculados, e você pode iniciar o check-in delas normalmente.</p>
+      <p style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#9B9891", marginTop: 0 }}>Turmas que você cadastrar aqui aparecem na grade de horários dos seus alunos vinculados, e você pode iniciar o check-in delas normalmente.</p>
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
         <Button icon={Plus} onClick={() => setNova(true)}>Nova turma</Button>
       </div>
@@ -4046,12 +4261,12 @@ function TurmasProfessor({ data, save, prof }) {
           return (
             <Card dark key={t.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: 12, flexWrap: "wrap", gap: 8 }}>
               <div>
-                <div style={{ fontWeight: 600, fontSize: 14, color: "#F5F3EC" }}>{t.nome}</div>
-                <div style={{ fontSize: 12.5, color: "#9B9891" }}>{formatDias(t.dias)} · {t.horario}{t.horarioFim ? ` às ${t.horarioFim}` : ""}</div>
-                <div style={{ fontSize: 11.5, color: "#9B9891" }}>Unidade: {unidadeDaTurma ? unidadeDaTurma.nome : "QG (padrão)"}</div>
+                <div style={{ fontWeight: 600, fontSize: 14, color: light ? LIGHT.text : "#F5F3EC" }}>{t.nome}</div>
+                <div style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#9B9891" }}>{formatDias(t.dias)} · {t.horario}{t.horarioFim ? ` às ${t.horarioFim}` : ""}</div>
+                <div style={{ fontSize: 11.5, color: light ? LIGHT.muted : "#9B9891" }}>Unidade: {unidadeDaTurma ? unidadeDaTurma.nome : "QG (padrão)"}</div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <Button variant="ghost" onClick={() => setEditando(t)} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>Editar</Button>
+                <Button variant="ghost" onClick={() => setEditando(t)} style={ghostEscuroFallback(light)}>Editar</Button>
                 <ConfirmDelete onConfirm={() => remover(t.id)} />
               </div>
             </Card>
@@ -4135,10 +4350,11 @@ function RegrasTatameAluno({ imagem }) {
 }
 
 function GolpesProibidosCard({ pdf, pdfNome }) {
+  const light = useDesktopLight();
   if (!pdf) return null;
   return (
-    <Card style={{ marginBottom: 14, background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}>
-      <div style={{ ...blockTitleStyle, color: "#FFFFFF" }}>🚫 Golpes proibidos</div>
+    <Card style={light ? { marginBottom: 14 } : { marginBottom: 14, background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}>
+      <div style={light ? blockTitleStyle : { ...blockTitleStyle, color: "#FFFFFF" }}>🚫 Golpes proibidos</div>
       <a href={pdf} target="_blank" rel="noreferrer" onClick={(e) => { e.preventDefault(); abrirPdfDataUrl(pdf); }} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "#C9A227" }}>
         📄 Abrir PDF ({pdfNome || "golpes-proibidos.pdf"})
       </a>
@@ -4153,6 +4369,7 @@ function slugTexto(str) {
 }
 
 function SalaReuniaoProfessores({ data, prof }) {
+  const light = useDesktopLight();
   const [aberta, setAberta] = useState(false);
   const [linkCopiado, setLinkCopiado] = useState(false);
   const roomName = `ciapaulista-reuniao-${slugTexto(data.academia.nome) || "equipe"}-${(data.academia.id || "sala").replace(/-/g, "").slice(0, 8)}`;
@@ -4172,14 +4389,14 @@ function SalaReuniaoProfessores({ data, prof }) {
 
   return (
     <>
-      <Card dark style={{ background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}>
-        <div style={{ ...blockTitleStyle, color: "#FFFFFF" }}>🎥 Reunião de professores</div>
-        <p style={{ fontSize: 12.5, color: "#9B9891", marginBottom: 12 }}>
+      <Card dark style={light ? undefined : { background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}>
+        <div style={light ? blockTitleStyle : { ...blockTitleStyle, color: "#FFFFFF" }}>🎥 Reunião de professores</div>
+        <p style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#9B9891", marginBottom: 12 }}>
           Sala de vídeo chamada pra equipe de professores. Quem entrar ao mesmo tempo cai na mesma reunião — sem precisar marcar link nem app externo. Quer chamar algum aluno também? Envie o link pra ele — não precisa ter o app instalado, abre no navegador normal.
         </p>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <Button onClick={() => setAberta(true)} style={{ flex: "1 1 160px", justifyContent: "center" }}>Entrar na reunião</Button>
-          <Button variant="ghost" icon={Share} onClick={convidar} style={{ flex: "1 1 160px", justifyContent: "center", color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>
+          <Button variant="ghost" icon={Share} onClick={convidar} style={{ flex: "1 1 160px", justifyContent: "center", ...(light ? {} : { color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }) }}>
             {linkCopiado ? "Link copiado!" : "Convidar (link)"}
           </Button>
         </div>
@@ -4255,6 +4472,7 @@ function UnidadeForm({ initial, onSave, onCancel }) {
 }
 
 function UnidadesAdmin({ data, save }) {
+  const light = useDesktopLight();
   const [novo, setNovo] = useState(false);
   const [editando, setEditando] = useState(null);
 
@@ -4276,7 +4494,7 @@ function UnidadesAdmin({ data, save }) {
 
   return (
     <div>
-      <p style={{ fontSize: 12.5, color: "#9B9891", marginTop: 0 }}>Cadastre aqui outros locais onde o professor dá aula (ou "Personal", sem endereço fixo). Depois é só vincular cada aluno à unidade certa no cadastro dele — o check-in por localização passa a considerar o local daquela unidade, em vez do QG.</p>
+      <p style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#9B9891", marginTop: 0 }}>Cadastre aqui outros locais onde o professor dá aula (ou "Personal", sem endereço fixo). Depois é só vincular cada aluno à unidade certa no cadastro dele — o check-in por localização passa a considerar o local daquela unidade, em vez do QG.</p>
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
         <Button icon={Plus} onClick={() => setNovo(true)}>Nova unidade</Button>
       </div>
@@ -4286,14 +4504,14 @@ function UnidadesAdmin({ data, save }) {
         {(data.unidades || []).map((u) => (
           <Card dark key={u.id} style={{ padding: 12, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
             <div>
-              <div style={{ fontWeight: 700, fontSize: 14, color: "#F5F3EC" }}>{u.nome}</div>
-              <div style={{ fontSize: 12, color: "#9B9891" }}>
+              <div style={{ fontWeight: 700, fontSize: 14, color: light ? LIGHT.text : "#F5F3EC" }}>{u.nome}</div>
+              <div style={{ fontSize: 12, color: light ? LIGHT.muted : "#9B9891" }}>
                 {u.latitude != null ? `${u.endereco || "Local cadastrado"} · raio ${u.raioCheckin || 150}m` : "Sem localização fixa (não exige geolocalização)"}
               </div>
-              <div style={{ fontSize: 11.5, color: "#9B9891" }}>PIX: {u.chavePix || "usa a chave geral da academia"}</div>
+              <div style={{ fontSize: 11.5, color: light ? LIGHT.muted : "#9B9891" }}>PIX: {u.chavePix || "usa a chave geral da academia"}</div>
             </div>
             <div style={{ display: "flex", gap: 8 }}>
-              <Button variant="ghost" onClick={() => setEditando(u)} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>Editar</Button>
+              <Button variant="ghost" onClick={() => setEditando(u)} style={ghostEscuroFallback(light)}>Editar</Button>
               <ConfirmDelete onConfirm={() => remover(u.id)} />
             </div>
           </Card>
@@ -4305,6 +4523,7 @@ function UnidadesAdmin({ data, save }) {
 }
 
 function PedirAssinaturaTodos({ data, save }) {
+  const light = useDesktopLight();
   const [confirmando, setConfirmando] = useState(false);
   const [feito, setFeito] = useState(false);
   const pedir = async () => {
@@ -4319,10 +4538,10 @@ function PedirAssinaturaTodos({ data, save }) {
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <span style={{ fontSize: 12.5, color: "#FF8A80", fontWeight: 600 }}>Isso vai pedir a assinatura de novo pra TODOS os {data.alunos.length} alunos (mesmo quem já assinou antes) na próxima vez que abrirem o app. Confirma?</span>
           <Button variant="vermelho" onClick={pedir}>Sim, pedir de novo</Button>
-          <Button variant="ghost" style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }} onClick={() => setConfirmando(false)}>Cancelar</Button>
+          <Button variant="ghost" style={ghostEscuroFallback(light)} onClick={() => setConfirmando(false)}>Cancelar</Button>
         </div>
       ) : (
-        <Button variant="ghost" onClick={() => { setConfirmando(true); setFeito(false); }} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>Pedir nova assinatura de todos os alunos</Button>
+        <Button variant="ghost" onClick={() => { setConfirmando(true); setFeito(false); }} style={ghostEscuroFallback(light)}>Pedir nova assinatura de todos os alunos</Button>
       )}
       {feito && <div style={{ fontSize: 12, color: "#4ADE80", fontWeight: 600, marginTop: 6 }}>Pronto — na próxima vez que cada aluno abrir o app, ele vai precisar assinar de novo (com o dedo, na tela).</div>}
     </div>
@@ -4330,6 +4549,9 @@ function PedirAssinaturaTodos({ data, save }) {
 }
 
 function ConfiguracoesAdmin({ data, save }) {
+  const light = useDesktopLight();
+  const rotuloConfig = light ? LIGHT.muted : "#9B9891";
+  const ghostConfig = ghostEscuroFallback(light);
   const [nome, setNome] = useState(data.academia.nome);
   const [chavePix, setChavePix] = useState(data.academia.chavePix || "");
   const [termo, setTermo] = useState(data.academia.termoPadrao || "");
@@ -4380,74 +4602,74 @@ function ConfiguracoesAdmin({ data, save }) {
   return (
     <Card dark>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <Field label="Logo da equipe" labelColor="#9B9891">
+        <Field label="Logo da equipe" labelColor={rotuloConfig}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             {logo ? <img src={logo} alt="logo" style={{ width: 56, height: 56, borderRadius: 10, objectFit: "cover", border: "1px solid rgba(255,255,255,0.14)" }} /> : <div style={{ width: 56, height: 56, borderRadius: 10, background: "rgba(255,255,255,0.06)" }} />}
-            <Button variant="ghost" icon={Camera} onClick={() => logoRef.current?.click()} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>Enviar logo</Button>
+            <Button variant="ghost" icon={Camera} onClick={() => logoRef.current?.click()} style={ghostConfig}>Enviar logo</Button>
             <input ref={logoRef} type="file" accept="image/*" hidden onChange={onLogo} />
           </div>
         </Field>
-        <Field label="Nome da academia/equipe" labelColor="#9B9891"><input style={inputStyle} value={nome} onChange={(e) => setNome(e.target.value)} /></Field>
-        <Field label="Chave PIX para pagamentos" labelColor="#9B9891"><input style={inputStyle} value={chavePix} onChange={(e) => setChavePix(e.target.value)} placeholder="ex: e-mail, telefone ou chave aleatória" /></Field>
-        <Field label="Endereço do QG" labelColor="#9B9891"><input style={inputStyle} value={endereco} onChange={(e) => setEndereco(e.target.value)} placeholder="Rua, número, bairro, cidade" /></Field>
+        <Field label="Nome da academia/equipe" labelColor={rotuloConfig}><input style={inputStyle} value={nome} onChange={(e) => setNome(e.target.value)} /></Field>
+        <Field label="Chave PIX para pagamentos" labelColor={rotuloConfig}><input style={inputStyle} value={chavePix} onChange={(e) => setChavePix(e.target.value)} placeholder="ex: e-mail, telefone ou chave aleatória" /></Field>
+        <Field label="Endereço do QG" labelColor={rotuloConfig}><input style={inputStyle} value={endereco} onChange={(e) => setEndereco(e.target.value)} placeholder="Rua, número, bairro, cidade" /></Field>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-          <Field label="Latitude" labelColor="#9B9891"><input type="number" step="any" style={inputStyle} value={latitude} onChange={(e) => setLatitude(e.target.value)} /></Field>
-          <Field label="Longitude" labelColor="#9B9891"><input type="number" step="any" style={inputStyle} value={longitude} onChange={(e) => setLongitude(e.target.value)} /></Field>
-          <Field label="Raio permitido (metros)" labelColor="#9B9891"><input type="number" min="10" style={inputStyle} value={raioCheckin} onChange={(e) => setRaioCheckin(e.target.value)} /></Field>
+          <Field label="Latitude" labelColor={rotuloConfig}><input type="number" step="any" style={inputStyle} value={latitude} onChange={(e) => setLatitude(e.target.value)} /></Field>
+          <Field label="Longitude" labelColor={rotuloConfig}><input type="number" step="any" style={inputStyle} value={longitude} onChange={(e) => setLongitude(e.target.value)} /></Field>
+          <Field label="Raio permitido (metros)" labelColor={rotuloConfig}><input type="number" min="10" style={inputStyle} value={raioCheckin} onChange={(e) => setRaioCheckin(e.target.value)} /></Field>
         </div>
         <div>
-          <Button variant="ghost" onClick={usarLocalizacaoAtual} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>Usar minha localização atual (se você estiver no QG agora)</Button>
-          <p style={{ fontSize: 11.5, color: "#9B9891", marginTop: 6 }}>Isso preenche latitude/longitude com base em onde este aparelho está agora. Se preferir, pegue as coordenadas pelo Google Maps: toque e segure o local no mapa e copie os números que aparecem.</p>
+          <Button variant="ghost" onClick={usarLocalizacaoAtual} style={ghostConfig}>Usar minha localização atual (se você estiver no QG agora)</Button>
+          <p style={{ fontSize: 11.5, color: rotuloConfig, marginTop: 6 }}>Isso preenche latitude/longitude com base em onde este aparelho está agora. Se preferir, pegue as coordenadas pelo Google Maps: toque e segure o local no mapa e copie os números que aparecem.</p>
         </div>
-        <Field label="Mensagem de aniversário (opcional)" labelColor="#9B9891">
+        <Field label="Mensagem de aniversário (opcional)" labelColor={rotuloConfig}>
           <input style={inputStyle} value={mensagemAniversario} onChange={(e) => setMensagemAniversario(e.target.value)} placeholder="Toda a equipe do QG deseja um ótimo dia. 🥋" />
-          <p style={{ fontSize: 11.5, color: "#9B9891", marginTop: 4 }}>Use <b>{"{nome}"}</b> em qualquer lugar do texto pra ele virar o primeiro nome da pessoa automaticamente. Se deixar em branco, usamos a mensagem padrão.</p>
+          <p style={{ fontSize: 11.5, color: rotuloConfig, marginTop: 4 }}>Use <b>{"{nome}"}</b> em qualquer lugar do texto pra ele virar o primeiro nome da pessoa automaticamente. Se deixar em branco, usamos a mensagem padrão.</p>
         </Field>
-        <Field label="Termo de consentimento (texto exibido no app)" labelColor="#9B9891">
+        <Field label="Termo de consentimento (texto exibido no app)" labelColor={rotuloConfig}>
           <textarea style={{ ...inputStyle, minHeight: 120, fontFamily: "Inter", resize: "vertical" }} value={termo} onChange={(e) => setTermo(e.target.value)} />
         </Field>
-        <Field label="Termo de consentimento (arquivo PDF, opcional)" labelColor="#9B9891">
+        <Field label="Termo de consentimento (arquivo PDF, opcional)" labelColor={rotuloConfig}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <Button variant="ghost" onClick={() => pdfRef.current?.click()} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>{termoPdf ? "Trocar PDF" : "Enviar PDF"}</Button>
+            <Button variant="ghost" onClick={() => pdfRef.current?.click()} style={ghostConfig}>{termoPdf ? "Trocar PDF" : "Enviar PDF"}</Button>
             <input ref={pdfRef} type="file" accept="application/pdf" hidden onChange={onPdf} />
-            {termoPdfNome && <span style={{ fontSize: 12.5, color: "#9B9891" }}>{termoPdfNome}</span>}
+            {termoPdfNome && <span style={{ fontSize: 12.5, color: rotuloConfig }}>{termoPdfNome}</span>}
           </div>
         </Field>
-        <Field label="Assinatura do termo" labelColor="#9B9891">
+        <Field label="Assinatura do termo" labelColor={rotuloConfig}>
           <PedirAssinaturaTodos data={data} save={save} />
-          <p style={{ fontSize: 11.5, color: "#9B9891", marginTop: 4 }}>Use isso depois de mudar o texto do termo, ou pra fazer todo mundo assinar com o dedo pela primeira vez (inclusive quem já tinha aceitado antes, sem assinatura).</p>
+          <p style={{ fontSize: 11.5, color: rotuloConfig, marginTop: 4 }}>Use isso depois de mudar o texto do termo, ou pra fazer todo mundo assinar com o dedo pela primeira vez (inclusive quem já tinha aceitado antes, sem assinatura).</p>
         </Field>
-        <Field label="Regras do tatame (imagem, opcional)" labelColor="#9B9891">
+        <Field label="Regras do tatame (imagem, opcional)" labelColor={rotuloConfig}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             {regrasTatame && <img src={regrasTatame} alt="regras do tatame" style={{ width: 56, height: 56, borderRadius: 10, objectFit: "cover", border: "1px solid rgba(255,255,255,0.14)" }} />}
-            <Button variant="ghost" icon={Camera} onClick={() => regrasRef.current?.click()} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>{regrasTatame ? "Trocar imagem" : "Enviar imagem"}</Button>
-            {regrasTatame && <Button variant="ghost" icon={X} onClick={() => setRegrasTatame(null)} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>Remover</Button>}
+            <Button variant="ghost" icon={Camera} onClick={() => regrasRef.current?.click()} style={ghostConfig}>{regrasTatame ? "Trocar imagem" : "Enviar imagem"}</Button>
+            {regrasTatame && <Button variant="ghost" icon={X} onClick={() => setRegrasTatame(null)} style={ghostConfig}>Remover</Button>}
             <input ref={regrasRef} type="file" accept="image/*" hidden onChange={onRegras} />
           </div>
-          <p style={{ fontSize: 11.5, color: "#9B9891", marginTop: 4 }}>Se preenchida, aparece no app do aluno, na aba "Mais", em um card "Regras do tatame" que ele pode expandir.</p>
+          <p style={{ fontSize: 11.5, color: rotuloConfig, marginTop: 4 }}>Se preenchida, aparece no app do aluno, na aba "Mais", em um card "Regras do tatame" que ele pode expandir.</p>
         </Field>
-        <Field label="Marca d'água dos relatórios em PDF (imagem, opcional)" labelColor="#9B9891">
+        <Field label="Marca d'água dos relatórios em PDF (imagem, opcional)" labelColor={rotuloConfig}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             {marcaDagua && <img src={marcaDagua} alt="marca d'água" style={{ width: 56, height: 56, borderRadius: 10, objectFit: "cover", border: "1px solid rgba(255,255,255,0.14)", background: "#333" }} />}
-            <Button variant="ghost" icon={Camera} onClick={() => marcaDaguaRef.current?.click()} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>{marcaDagua ? "Trocar imagem" : "Enviar imagem"}</Button>
-            {marcaDagua && <Button variant="ghost" icon={X} onClick={() => setMarcaDagua(null)} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>Remover</Button>}
+            <Button variant="ghost" icon={Camera} onClick={() => marcaDaguaRef.current?.click()} style={ghostConfig}>{marcaDagua ? "Trocar imagem" : "Enviar imagem"}</Button>
+            {marcaDagua && <Button variant="ghost" icon={X} onClick={() => setMarcaDagua(null)} style={ghostConfig}>Remover</Button>}
             <input ref={marcaDaguaRef} type="file" accept="image/*" hidden onChange={onMarcaDagua} />
           </div>
-          <p style={{ fontSize: 11.5, color: "#9B9891", marginTop: 4 }}>Aparece grande, no centro, bem clarinha, atrás do conteúdo de todo relatório em PDF. Funciona melhor com uma imagem clara/transparente (tipo um desenho de linha) — ela é invertida automaticamente pra ficar visível no papel branco. Se não enviar nada aqui, usamos o "Logo da equipe" pequeno no canto, como já era antes.</p>
+          <p style={{ fontSize: 11.5, color: rotuloConfig, marginTop: 4 }}>Aparece grande, no centro, bem clarinha, atrás do conteúdo de todo relatório em PDF. Funciona melhor com uma imagem clara/transparente (tipo um desenho de linha) — ela é invertida automaticamente pra ficar visível no papel branco. Se não enviar nada aqui, usamos o "Logo da equipe" pequeno no canto, como já era antes.</p>
         </Field>
-        <Field label="Golpes proibidos (arquivo PDF, opcional)" labelColor="#9B9891">
+        <Field label="Golpes proibidos (arquivo PDF, opcional)" labelColor={rotuloConfig}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <Button variant="ghost" onClick={() => golpesProibidosRef.current?.click()} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>{golpesProibidosPdf ? "Trocar PDF" : "Enviar PDF"}</Button>
+            <Button variant="ghost" onClick={() => golpesProibidosRef.current?.click()} style={ghostConfig}>{golpesProibidosPdf ? "Trocar PDF" : "Enviar PDF"}</Button>
             <input ref={golpesProibidosRef} type="file" accept="application/pdf" hidden onChange={onGolpesProibidos} />
-            {golpesProibidosPdfNome && <span style={{ fontSize: 12.5, color: "#9B9891" }}>{golpesProibidosPdfNome}</span>}
-            {golpesProibidosPdf && <Button variant="ghost" icon={X} onClick={() => { setGolpesProibidosPdf(null); setGolpesProibidosPdfNome(""); }} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>Remover</Button>}
+            {golpesProibidosPdfNome && <span style={{ fontSize: 12.5, color: rotuloConfig }}>{golpesProibidosPdfNome}</span>}
+            {golpesProibidosPdf && <Button variant="ghost" icon={X} onClick={() => { setGolpesProibidosPdf(null); setGolpesProibidosPdfNome(""); }} style={ghostConfig}>Remover</Button>}
           </div>
-          <p style={{ fontSize: 11.5, color: "#9B9891", marginTop: 4 }}>Se enviado, aparece pro aluno na aba "Mais" e também no app do professor, como um link pra abrir o PDF.</p>
+          <p style={{ fontSize: 11.5, color: rotuloConfig, marginTop: 4 }}>Se enviado, aparece pro aluno na aba "Mais" e também no app do professor, como um link pra abrir o PDF.</p>
         </Field>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-          <Field label="Instagram" labelColor="#9B9891"><input style={inputStyle} value={instagram} onChange={(e) => setInstagram(e.target.value)} placeholder="https://instagram.com/..." /></Field>
-          <Field label="Facebook" labelColor="#9B9891"><input style={inputStyle} value={facebook} onChange={(e) => setFacebook(e.target.value)} placeholder="https://facebook.com/..." /></Field>
-          <Field label="WhatsApp" labelColor="#9B9891"><input style={inputStyle} value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder="https://wa.me/55..." /></Field>
+          <Field label="Instagram" labelColor={rotuloConfig}><input style={inputStyle} value={instagram} onChange={(e) => setInstagram(e.target.value)} placeholder="https://instagram.com/..." /></Field>
+          <Field label="Facebook" labelColor={rotuloConfig}><input style={inputStyle} value={facebook} onChange={(e) => setFacebook(e.target.value)} placeholder="https://facebook.com/..." /></Field>
+          <Field label="WhatsApp" labelColor={rotuloConfig}><input style={inputStyle} value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder="https://wa.me/55..." /></Field>
         </div>
         <div><ConfirmButton onConfirm={salvar}>Salvar configurações</ConfirmButton></div>
       </div>
@@ -4618,6 +4840,8 @@ function useFullBleed() {
 }
 
 function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
+  const light = useDesktopLight();
+  const ghostEscuro = ghostEscuroFallback(light);
   const [tab, setTab] = useState("dashboard");
   const [erroRelatorioAlunos, setErroRelatorioAlunos] = useState("");
   const {
@@ -4672,12 +4896,19 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
   const iconesTabs = {
     dashboard: "📊", inicio: "🏠", alunos: "🤼", checkins: "📍", turmas: "📅", financeiro: "💰", relatorios: "📑", avisos: "🔔", videos: "🎬", produtos: "🛍️", vendas: "💵", reuniao: "🎥", perfil: "👤",
   };
+  const iconesTabsClaro = {
+    dashboard: LayoutDashboard, inicio: Home, alunos: Users, checkins: QrCode, turmas: Calendar, financeiro: Wallet,
+    relatorios: FileText, avisos: Bell, videos: PlayCircle, produtos: ShoppingBag, vendas: Receipt, reuniao: Video, perfil: User,
+  };
 
   const [refFullBleed, estiloFullBleed] = useFullBleed();
 
   return (
     <div ref={refFullBleed} style={{
-      backgroundImage: "radial-gradient(circle at 15% 15%, rgba(201,162,39,0.05), transparent 40%), linear-gradient(160deg, #14171F 0%, #0B0C10 100%)",
+      backgroundImage: light
+        ? "none"
+        : "radial-gradient(circle at 15% 15%, rgba(201,162,39,0.05), transparent 40%), linear-gradient(160deg, #14171F 0%, #0B0C10 100%)",
+      background: light ? LIGHT.paper : undefined,
       minHeight: "calc(100vh - 66px)",
       ...estiloFullBleed,
       position: "relative",
@@ -4686,42 +4917,64 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
       display: "flex",
       overflow: "hidden",
     }}>
-      <img src={LOGO_CACHORRO} alt="" style={{ position: "absolute", width: 420, right: -110, bottom: -70, opacity: 0.05, pointerEvents: "none", zIndex: 0 }} />
-      <div style={{ width: 220, flexShrink: 0, background: "#000", borderRight: "1px solid rgba(255,255,255,0.06)", boxSizing: "border-box", zIndex: 1 }}>
+      {!light && <img src={LOGO_CACHORRO} alt="" style={{ position: "absolute", width: 420, right: -110, bottom: -70, opacity: 0.05, pointerEvents: "none", zIndex: 0 }} />}
+      <div style={{ width: 220, flexShrink: 0, background: light ? LIGHT.surface : "#000", borderRight: light ? `1px solid ${LIGHT.line}` : "1px solid rgba(255,255,255,0.06)", boxSizing: "border-box", zIndex: 1 }}>
         <div style={{ position: "sticky", top: 0, padding: "20px 12px" }}>
-          <div style={{ padding: "0 6px 16px", marginBottom: 10, borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-            <div style={{ fontFamily: "Oswald", fontWeight: 700, color: "#fff", fontSize: 13, textTransform: "uppercase", letterSpacing: 0.4 }}>{data.academia.nome}</div>
-            <div style={{ fontSize: 10.5, color: "#9B9891", marginTop: 2 }}>Área do professor</div>
+          <div style={{ padding: "0 6px 16px", marginBottom: 10, borderBottom: light ? `1px solid ${LIGHT.line}` : "1px solid rgba(255,255,255,0.08)" }}>
+            <div style={{ fontFamily: "Oswald", fontWeight: 700, color: light ? LIGHT.ink : "#fff", fontSize: 13, textTransform: "uppercase", letterSpacing: 0.4 }}>{data.academia.nome}</div>
+            <div style={{ fontSize: 10.5, color: light ? LIGHT.muted : "#9B9891", marginTop: 2 }}>Área do professor</div>
           </div>
-          {tabs.map((t) => (
-            <button key={t.id} onClick={() => setTab(t.id)} style={{
-              display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left",
-              padding: "10px 12px", borderRadius: 8, border: "none", cursor: "pointer", marginBottom: 2,
-              background: tab === t.id ? "rgba(201,162,39,0.12)" : "transparent",
-              color: tab === t.id ? "#C9A227" : "#9B9891", fontSize: 13, fontWeight: 600,
-            }}>
-              <span style={{ fontSize: 15, width: 18, textAlign: "center" }}>{iconesTabs[t.id]}</span>
-              {t.label}
-            </button>
-          ))}
-          <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,0.08)" }}>
-            <Button variant="ghost" icon={LogOut} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)", width: "100%", justifyContent: "center" }} onClick={onSair}>Sair</Button>
+          {tabs.map((t) => {
+            const IconeClaro = iconesTabsClaro[t.id];
+            const ativo = tab === t.id;
+            return (
+              <button key={t.id} onClick={() => setTab(t.id)} className={light ? "qg-nav-item" : undefined} style={{
+                display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left",
+                padding: light ? "9px 12px" : "10px 12px", borderRadius: light ? 10 : 8, border: "none", cursor: "pointer", marginBottom: 2,
+                position: "relative",
+                background: ativo ? (light ? LIGHT.ink : "rgba(201,162,39,0.12)") : "transparent",
+                color: ativo ? (light ? "#FFFFFF" : "#C9A227") : (light ? "#5B5645" : "#9B9891"),
+                fontSize: 13, fontWeight: ativo ? 700 : 600,
+                boxShadow: light && ativo ? "0 6px 16px rgba(18,33,59,0.22)" : "none",
+              }}>
+                {light && ativo && <span style={{ position: "absolute", left: -12, top: 6, bottom: 6, width: 3, background: LIGHT.gold, borderRadius: "0 3px 3px 0" }} />}
+                {light ? (
+                  <IconeClaro size={16} strokeWidth={2.2} style={{ flexShrink: 0, color: ativo ? LIGHT.gold : "#8A8371" }} />
+                ) : (
+                  <span style={{ fontSize: 15, width: 18, textAlign: "center" }}>{iconesTabs[t.id]}</span>
+                )}
+                {t.label}
+              </button>
+            );
+          })}
+          <div style={{ marginTop: 16, paddingTop: 14, borderTop: light ? `1px solid ${LIGHT.line}` : "1px solid rgba(255,255,255,0.08)" }}>
+            <Button variant="ghost" icon={LogOut} style={light ? { color: LIGHT.ink, border: `1px solid ${LIGHT.line}`, width: "100%", justifyContent: "center" } : { color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)", width: "100%", justifyContent: "center" }} onClick={onSair}>Sair</Button>
           </div>
         </div>
       </div>
 
-      <div style={{ flex: 1, padding: "24px 28px 40px", minWidth: 0, color: "#F5F3EC" }}>
+      <div style={{ flex: 1, padding: "24px 28px 40px", minWidth: 0, color: light ? LIGHT.text : "#F5F3EC" }}>
         <div style={{ marginBottom: 20 }}>
-          <div style={{ fontFamily: "Oswald", fontWeight: 700, fontSize: 21, color: "#C9A227", textTransform: "uppercase" }}>{tabs.find((t) => t.id === tab)?.label}</div>
-          <div style={{ fontSize: 12, color: "#9B9891", marginTop: 2 }}>Logado como professor · {prof.nome} · só os seus alunos vinculados</div>
+          <div style={{ fontFamily: "Oswald", fontWeight: light ? 600 : 700, fontSize: light ? 26 : 21, color: light ? LIGHT.ink : "#C9A227", textTransform: light ? "none" : "uppercase" }}>{tabs.find((t) => t.id === tab)?.label}</div>
+          <div style={{ fontSize: light ? 13.5 : 12, color: light ? LIGHT.muted : "#9B9891", marginTop: light ? 5 : 2 }}>Logado como professor · {prof.nome} · só os seus alunos vinculados</div>
         </div>
 
+      <div key={light ? tab : undefined} className={light ? "qg-fade-in" : undefined}>
       {tab === "dashboard" && (
         <div>
+          <Card dark style={{ display: "flex", alignItems: "center", gap: 18, marginBottom: 16, flexWrap: "wrap" }}>
+            <Avatar foto={prof.foto} nome={prof.nome} size={76} borderColor={light ? LIGHT.gold : "#C9A227"} />
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: light ? LIGHT.muted : "#9B9891", textTransform: "uppercase", letterSpacing: 0.6 }}>Bem-vindo, professor</div>
+              <div style={{ fontFamily: "Oswald", fontWeight: 700, fontSize: 30, color: light ? LIGHT.ink : "#C9A227", lineHeight: 1.15 }}>{prof.nome}</div>
+              {prof.faixaId && <div style={{ marginTop: 10 }}><BeltBar faixas={data.faixas} faixaId={prof.faixaId} grau={prof.grau} size="lg" textColor={light ? LIGHT.text : "#F5F3EC"} /></div>}
+            </div>
+          </Card>
+
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px,1fr))", gap: 12, marginBottom: 14 }}>
-            <StatCard label="Alunos ativos" value={meusAlunos.filter((a) => a.ativo !== false).length} icon={Users} dark />
-            <StatCard label="Turmas" value={data.turmas.length} icon={CalendarCheck} dark />
-            <StatCard label="Check-ins hoje" value={data.checkins.filter((c) => { const al = data.alunos.find((a) => a.id === c.alunoId); return al && al.professorId === prof.id && dataLocalDe(c.dataHora) === hoje(); }).length} icon={QrCode} dark />
+            <StatCard label="Alunos ativos" value={meusAlunos.filter((a) => a.ativo !== false).length} icon={Users} dark chipBg="#EEF1FA" chipColor="#12213B" />
+            <StatCard label="Turmas" value={data.turmas.length} icon={CalendarCheck} dark chipBg="#EEF1FA" chipColor="#12213B" />
+            <StatCard label="Check-ins hoje" value={data.checkins.filter((c) => { const al = data.alunos.find((a) => a.id === c.alunoId); return al && al.professorId === prof.id && dataLocalDe(c.dataHora) === hoje(); }).length} icon={QrCode} dark chipBg={LIGHT.goodSoft} chipColor={LIGHT.good} />
           </div>
 
           <AlunosPorFaixaChart alunos={meusAlunos} faixas={data.faixas} titulo="Meus alunos por faixa" dark />
@@ -4734,18 +4987,18 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
       {tab === "inicio" && (
         <div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px,1fr))", gap: 12, marginBottom: 14 }}>
-            <StatCard label="Meus alunos" value={meusAlunos.length} icon={Users} dark />
-            <StatCard label="Aula ativa" value={sessaoAtiva ? "Sim" : "Não"} icon={CalendarCheck} dark />
+            <StatCard label="Meus alunos" value={meusAlunos.length} icon={Users} dark chipBg="#EEF1FA" chipColor="#12213B" />
+            <StatCard label="Aula ativa" value={sessaoAtiva ? "Sim" : "Não"} icon={CalendarCheck} dark chipBg={LIGHT.goodSoft} chipColor={LIGHT.good} />
           </div>
 
-          <Card style={{ marginBottom: 16, background: "#171C27", border: "1px solid rgba(255,255,255,0.07)" }}>
-            <div style={{ ...blockTitleStyle, color: "#F0EEE8" }}>Aula do dia</div>
+          <Card style={light ? { marginBottom: 16 } : { marginBottom: 16, background: "#171C27", border: "1px solid rgba(255,255,255,0.07)" }}>
+            <div style={light ? blockTitleStyle : { ...blockTitleStyle, color: "#F0EEE8" }}>Aula do dia</div>
             {!sessaoAtiva ? (
               <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
                 <div style={{ flex: "0 1 260px", minWidth: 160 }}>
-                  <Field label="Selecionar treino" labelColor="#9B9891">
-                    <select style={{ ...inputStyle, background: "#0F1218", border: "1px solid rgba(255,255,255,0.12)", color: "#F0EEE8", colorScheme: "dark" }} value={turmaId} onChange={(e) => setTurmaId(e.target.value)}>
-                      {data.turmas.filter((t) => !t.professorId || t.professorId === prof.id).map((t) => <option key={t.id} value={t.id} style={{ background: "#1A1D24", color: "#F5F3EC" }}>{t.nome} — {t.horario}{t.horarioFim ? ` às ${t.horarioFim}` : ""}</option>)}
+                  <Field label="Selecionar treino" labelColor={light ? LIGHT.muted : "#9B9891"}>
+                    <select style={light ? inputStyle : { ...inputStyle, background: "#0F1218", border: "1px solid rgba(255,255,255,0.12)", color: "#F0EEE8", colorScheme: "dark" }} value={turmaId} onChange={(e) => setTurmaId(e.target.value)}>
+                      {data.turmas.filter((t) => !t.professorId || t.professorId === prof.id).map((t) => <option key={t.id} value={t.id} style={light ? undefined : { background: "#1A1D24", color: "#F5F3EC" }}>{t.nome} — {t.horario}{t.horarioFim ? ` às ${t.horarioFim}` : ""}</option>)}
                     </select>
                   </Field>
                 </div>
@@ -4753,9 +5006,9 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
               </div>
             ) : (
               <div>
-                <div style={{ fontSize: 13, color: "#9B9891", marginBottom: 4 }}>Aula ativa — os alunos já podem fazer check-in por localização</div>
-                <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8, color: "#F0EEE8" }}>{turma?.nome}</div>
-                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, color: "#F0EEE8" }}>{checkinsSessao.length} aluno(s) fizeram check-in</div>
+                <div style={{ fontSize: 13, color: light ? LIGHT.muted : "#9B9891", marginBottom: 4 }}>Aula ativa — os alunos já podem fazer check-in por localização</div>
+                <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8, color: light ? LIGHT.text : "#F0EEE8" }}>{turma?.nome}</div>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, color: light ? LIGHT.text : "#F0EEE8" }}>{checkinsSessao.length} aluno(s) fizeram check-in</div>
                 <Button variant="danger" onClick={encerrarSessao}>Encerrar aula</Button>
               </div>
             )}
@@ -4772,14 +5025,14 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
       {tab === "alunos" && (
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
-            <div style={{ fontSize: 13, color: "#9B9891" }}>{meusAlunos.length} aluno(s) vinculados a você</div>
+            <div style={{ fontSize: 13, color: light ? LIGHT.muted : "#9B9891" }}>{meusAlunos.length} aluno(s) vinculados a você</div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <Button icon={Users} variant="gold" onClick={() => { setErroRelatorioAlunos(""); if (meusAlunos.length === 0) { setErroRelatorioAlunos("Nenhum aluno vinculado a você ainda."); return; } gerarRelatorioListaAlunos(data, setErroRelatorioAlunos, meusAlunos, prof.nome); }}>Lista de alunos (PDF)</Button>
               <Button icon={Plus} onClick={() => setNovoAluno(true)}>Novo aluno</Button>
             </div>
           </div>
           {erroRelatorioAlunos && <div style={{ marginBottom: 10, fontSize: 12.5, color: "#FF8A80", fontWeight: 600 }}>{erroRelatorioAlunos}</div>}
-          {!sessaoAtiva && <p style={{ fontSize: 12, color: "#9B9891", marginTop: 0 }}>Inicie a aula na aba Início para poder marcar presença manualmente.</p>}
+          {!sessaoAtiva && <p style={{ fontSize: 12, color: light ? LIGHT.muted : "#9B9891", marginTop: 0 }}>Inicie a aula na aba Início para poder marcar presença manualmente.</p>}
           {novoAluno && (
             <PersonForm tipo="aluno" planos={data.planos} faixas={data.faixas} professores={data.professores} unidades={data.unidades} turmas={data.turmas} initial={{ professorId: prof.id }} onCancel={() => setNovoAluno(false)} onSave={addAlunoProf} />
           )}
@@ -4805,15 +5058,15 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
               const faixaAtual = data.faixas[idx] || data.faixas[0];
               const presente = sessaoAtiva ? data.checkins.some((c) => c.sessaoId === sessaoAtiva.id && c.alunoId === a.id) : false;
               const aberto = !!alunosExpandidos[a.id];
-              const tituloSecaoStyle = { fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4, color: "#B0AA98", marginBottom: 7 };
-              const secaoStyle = { borderTop: "1px solid #EFEBDF", paddingTop: 10, marginTop: 10 };
+              const tituloSecaoStyle = { fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4, color: light ? LIGHT.muted : "#B0AA98", marginBottom: 7 };
+              const secaoStyle = { borderTop: light ? `1px solid ${LIGHT.line}` : "1px solid #EFEBDF", paddingTop: 10, marginTop: 10 };
               return (
                 <Card dark key={a.id} style={{ padding: 12, opacity: a.ativo === false ? 0.6 : 1 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }} onClick={() => alternarExpandido(a.id)}>
                     <Avatar foto={a.foto} nome={a.nome} />
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 600, fontSize: 14, color: "#F5F3EC" }}>{a.codigo && <span style={{ color: "#C9A227", fontWeight: 700 }}>{formatarCodigoAluno(a.codigo)} · </span>}{a.nome}{a.apelido && <span style={{ fontWeight: 400, color: "#9B9891" }}> "{a.apelido}"</span>}</div>
-                      <BeltBar faixas={data.faixas} faixaId={a.faixaId} grau={a.grau} textColor="#F5F3EC" />
+                      <div style={{ fontWeight: 600, fontSize: 14, color: light ? LIGHT.text : "#F5F3EC" }}>{a.codigo && <span style={{ color: "#C9A227", fontWeight: 700 }}>{formatarCodigoAluno(a.codigo)} · </span>}{a.nome}{a.apelido && <span style={{ fontWeight: 400, color: light ? LIGHT.muted : "#9B9891" }}> "{a.apelido}"</span>}</div>
+                      <BeltBar faixas={data.faixas} faixaId={a.faixaId} grau={a.grau} textColor={light ? LIGHT.text : "#F5F3EC"} />
                       {!aberto && (
                         <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
                           {!emDia && <Tag ok={false}>Pendente</Tag>}
@@ -4821,8 +5074,8 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
                         </div>
                       )}
                     </div>
-                    <div style={{ width: 28, height: 28, borderRadius: "50%", background: "rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transform: aberto ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}>
-                      <ChevronRight size={15} color="#9B9891" />
+                    <div style={{ width: 28, height: 28, borderRadius: "50%", background: light ? LIGHT.paper : "rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transform: aberto ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}>
+                      <ChevronRight size={15} color={light ? LIGHT.muted : "#9B9891"} />
                     </div>
                   </div>
 
@@ -4834,17 +5087,17 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
                         <div style={tituloSecaoStyle}>💰 Financeiro — {plano?.nome || "sem plano"}</div>
                         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                           <Tag ok={emDia}>{emDia ? "Em dia" : "Pendente"}</Tag>
-                          {!emDia && <Button variant="gold" onClick={() => darBaixaPagamento(a.id)}>Dar baixa</Button>}
-                          {emDia && (a.pagamentos || []).length > 0 && <Button variant="ghost" onClick={() => desfazerBaixaPagamento(a.id)} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>Desfazer baixa</Button>}
+                          {!emDia && <DarBaixaControle mensalidade={plano?.valor || 0} onConfirmar={(valorProdutos) => darBaixaPagamento(a.id, valorProdutos)} />}
+                          {emDia && (a.pagamentos || []).length > 0 && <Button variant="ghost" onClick={() => desfazerBaixaPagamento(a.id)} style={ghostEscuro}>Desfazer baixa</Button>}
                         </div>
                       </div>
 
                       <div style={secaoStyle}>
                         <div style={tituloSecaoStyle}>🥋 Graduação</div>
-                        <div style={{ fontSize: 11.5, color: "#9B9891", marginBottom: 8 }}>{progressoGraduacaoTexto(data.faixas, a.faixaId, a.grau, a.checkinsDesdeGraduacao, categoriaEtaria(a.dataNascimento))} · {a.checkinsDesdeGraduacao || 0} aula(s) desde a última graduação</div>
+                        <div style={{ fontSize: 11.5, color: light ? LIGHT.muted : "#9B9891", marginBottom: 8 }}>{progressoGraduacaoTexto(data.faixas, a.faixaId, a.grau, a.checkinsDesdeGraduacao, categoriaEtaria(a.dataNascimento))} · {a.checkinsDesdeGraduacao || 0} aula(s) desde a última graduação</div>
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-                          {faixaAtual?.grausMax > 0 && <Button variant="ghost" onClick={() => graduar(a.id, "grau")} disabled={a.grau >= faixaAtual.grausMax} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>+1 grau</Button>}
-                          <Button variant="ghost" onClick={() => graduar(a.id, "faixa")} disabled={idx >= data.faixas.length - 1} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>Graduar faixa</Button>
+                          {faixaAtual?.grausMax > 0 && <Button variant="ghost" onClick={() => graduar(a.id, "grau")} disabled={a.grau >= faixaAtual.grausMax} style={ghostEscuro}>+1 grau</Button>}
+                          <Button variant="ghost" onClick={() => graduar(a.id, "faixa")} disabled={idx >= data.faixas.length - 1} style={ghostEscuro}>Graduar faixa</Button>
                         </div>
                         <AjustarAulasInline onAjustar={(delta) => ajustarAulasManualmente(a.id, delta)} />
                       </div>
@@ -4854,7 +5107,7 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
                           <div style={tituloSecaoStyle}>📍 Presença na aula de hoje</div>
                           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                             <Tag ok={presente}>{presente ? "Presente" : "Ausente"}</Tag>
-                            <Button variant="ghost" onClick={() => alternarPresenca(a.id, presente)} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>{presente ? "Remover presença" : "Marcar presença"}</Button>
+                            <Button variant="ghost" onClick={() => alternarPresenca(a.id, presente)} style={ghostEscuro}>{presente ? "Remover presença" : "Marcar presença"}</Button>
                           </div>
                         </div>
                       )}
@@ -4862,8 +5115,8 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
                       <div style={secaoStyle}>
                         <div style={tituloSecaoStyle}>👤 Conta</div>
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-                          <Button variant="ghost" onClick={() => resetarSenhaAlunoProf(a.id)} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>Redefinir senha</Button>
-                          <Button variant="ghost" onClick={() => setEditandoAluno(a)} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>Editar</Button>
+                          <Button variant="ghost" onClick={() => resetarSenhaAlunoProf(a.id)} style={ghostEscuro}>Redefinir senha</Button>
+                          <Button variant="ghost" onClick={() => setEditandoAluno(a)} style={ghostEscuro}>Editar</Button>
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                           <Button variant={a.ativo === false ? "gold" : "vermelho"} onClick={() => alternarAtivoAlunoProf(a.id)}>{a.ativo === false ? "Reativar acesso" : "Desativar acesso"}</Button>
@@ -4881,14 +5134,14 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
                             {a.assinaturaTermo ? (
                               <img src={a.assinaturaTermo} alt="Assinatura do termo" style={{ background: "#fff", borderRadius: 8, border: "1px solid rgba(255,255,255,0.14)", maxWidth: 240, display: "block", marginBottom: 8 }} />
                             ) : (
-                              <div style={{ fontSize: 11.5, color: "#9B9891", marginBottom: 8 }}>Sem assinatura registrada (aceito antes dessa funcionalidade existir).</div>
+                              <div style={{ fontSize: 11.5, color: light ? LIGHT.muted : "#9B9891", marginBottom: 8 }}>Sem assinatura registrada (aceito antes dessa funcionalidade existir).</div>
                             )}
-                            <Button variant="ghost" onClick={() => gerarDocumentoTermoAssinado(data, a, (msg) => alert(msg))} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>Ver documento assinado</Button>
+                            <Button variant="ghost" onClick={() => gerarDocumentoTermoAssinado(data, a, (msg) => alert(msg))} style={ghostEscuro}>Ver documento assinado</Button>
                           </div>
                         ) : a.termoAssinadoManual ? (
                           <div>
-                            <div style={{ fontSize: 12.5, color: "#9B9891", marginBottom: 8 }}>Assinado fisicamente (registrado pela administração).</div>
-                            <Button variant="ghost" onClick={() => gerarDocumentoTermoAssinado(data, a, (msg) => alert(msg))} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>Ver documento</Button>
+                            <div style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#9B9891", marginBottom: 8 }}>Assinado fisicamente (registrado pela administração).</div>
+                            <Button variant="ghost" onClick={() => gerarDocumentoTermoAssinado(data, a, (msg) => alert(msg))} style={ghostEscuro}>Ver documento</Button>
                           </div>
                         ) : (
                           <div style={{ fontSize: 12.5, color: "#FF8A80", fontWeight: 600 }}>Pendente — o aluno ainda não assinou.</div>
@@ -4943,7 +5196,7 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
 
       {tab === "perfil" && (
         <Card dark>
-          <div style={{ ...blockTitleStyle, color: "#F5F3EC" }}>Meu perfil</div>
+          <div style={light ? blockTitleStyle : { ...blockTitleStyle, color: "#F5F3EC" }}>Meu perfil</div>
           <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
             <div style={{ position: "relative", flexShrink: 0 }}>
               <Avatar foto={prof.foto} nome={prof.nome} size={72} />
@@ -4955,30 +5208,31 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
             </div>
             {!editandoPerfil ? (
               <div style={{ flex: 1, minWidth: 200 }}>
-                <div style={{ fontWeight: 700, fontSize: 15, color: "#F5F3EC" }}>{prof.nome}</div>
-                <div style={{ fontSize: 12.5, color: "#9B9891" }}>{prof.especialidade || "—"} {prof.email && `· ${prof.email}`} {prof.telefone && `· ${prof.telefone}`}</div>
-                {prof.endereco && <div style={{ fontSize: 11.5, color: "#9B9891" }}>{prof.endereco}</div>}
-                {prof.faixaId && <div style={{ marginTop: 8 }}><BeltBar faixas={data.faixas} faixaId={prof.faixaId} grau={prof.grau} textColor="#F5F3EC" /></div>}
-                <div style={{ marginTop: 8 }}><Button variant="ghost" onClick={() => setEditandoPerfil(true)} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>Editar meus dados</Button></div>
+                <div style={{ fontWeight: 700, fontSize: 15, color: light ? LIGHT.text : "#F5F3EC" }}>{prof.nome}</div>
+                <div style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#9B9891" }}>{prof.especialidade || "—"} {prof.email && `· ${prof.email}`} {prof.telefone && `· ${prof.telefone}`}</div>
+                {prof.endereco && <div style={{ fontSize: 11.5, color: light ? LIGHT.muted : "#9B9891" }}>{prof.endereco}</div>}
+                {prof.faixaId && <div style={{ marginTop: 8 }}><BeltBar faixas={data.faixas} faixaId={prof.faixaId} grau={prof.grau} textColor={light ? LIGHT.text : "#F5F3EC"} /></div>}
+                <div style={{ marginTop: 8 }}><Button variant="ghost" onClick={() => setEditandoPerfil(true)} style={ghostEscuro}>Editar meus dados</Button></div>
               </div>
             ) : (
               <div style={{ flex: 1, minWidth: 220, display: "flex", flexDirection: "column", gap: 8 }}>
                 <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 8 }}>
-                  <Field label="Nome" labelColor="#9B9891"><input style={inputStyle} value={nome} onChange={(e) => setNome(e.target.value)} /></Field>
-                  <Field label="E-mail" labelColor="#9B9891"><input style={inputStyle} value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
-                  <Field label="Telefone" labelColor="#9B9891"><input style={inputStyle} value={telefone} onChange={(e) => setTelefone(e.target.value)} /></Field>
-                  <Field label="Especialidade" labelColor="#9B9891"><input style={inputStyle} value={especialidade} onChange={(e) => setEspecialidade(e.target.value)} /></Field>
-                  <Field label="Endereço" labelColor="#9B9891"><input style={inputStyle} value={endereco} onChange={(e) => setEndereco(e.target.value)} /></Field>
+                  <Field label="Nome" labelColor={light ? LIGHT.muted : "#9B9891"}><input style={inputStyle} value={nome} onChange={(e) => setNome(e.target.value)} /></Field>
+                  <Field label="E-mail" labelColor={light ? LIGHT.muted : "#9B9891"}><input style={inputStyle} value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
+                  <Field label="Telefone" labelColor={light ? LIGHT.muted : "#9B9891"}><input style={inputStyle} value={telefone} onChange={(e) => setTelefone(e.target.value)} /></Field>
+                  <Field label="Especialidade" labelColor={light ? LIGHT.muted : "#9B9891"}><input style={inputStyle} value={especialidade} onChange={(e) => setEspecialidade(e.target.value)} /></Field>
+                  <Field label="Endereço" labelColor={light ? LIGHT.muted : "#9B9891"}><input style={inputStyle} value={endereco} onChange={(e) => setEndereco(e.target.value)} /></Field>
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <ConfirmButton onConfirm={salvarPerfilProf}>Salvar</ConfirmButton>
-                  <Button variant="ghost" icon={X} onClick={() => setEditandoPerfil(false)} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>Cancelar</Button>
+                  <Button variant="ghost" icon={X} onClick={() => setEditandoPerfil(false)} style={ghostEscuro}>Cancelar</Button>
                 </div>
               </div>
             )}
           </div>
         </Card>
       )}
+      </div>
       </div>
     </div>
   );
@@ -5214,7 +5468,7 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
     });
     await save({ ...data, alunos });
   };
-  const darBaixaPagamento = (alunoId) => darBaixaEm(data, save, alunoId);
+  const darBaixaPagamento = (alunoId, valorProdutos) => darBaixaEm(data, save, alunoId, valorProdutos);
   const desfazerBaixaPagamento = (alunoId) => desfazerBaixaEm(data, save, alunoId);
 
   const checkinsSessao = sessaoAtiva ? data.checkins.filter((c) => c.sessaoId === sessaoAtiva.id) : [];
@@ -5431,7 +5685,7 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
                         <div style={tituloSecaoStyle}>💰 Financeiro — {plano?.nome || "sem plano"}</div>
                         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                           <Tag ok={emDia}>{emDia ? "Em dia" : "Pendente"}</Tag>
-                          {!emDia && <Button variant="gold" onClick={() => darBaixaPagamento(a.id)}>Dar baixa</Button>}
+                          {!emDia && <DarBaixaControle mensalidade={plano?.valor || 0} onConfirmar={(valorProdutos) => darBaixaPagamento(a.id, valorProdutos)} />}
                           {emDia && (a.pagamentos || []).length > 0 && <Button variant="ghost" style={ghostDark} onClick={() => desfazerBaixaPagamento(a.id)}>Desfazer baixa</Button>}
                         </div>
                       </div>
