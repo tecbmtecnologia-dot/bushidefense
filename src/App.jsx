@@ -2450,19 +2450,21 @@ function AlunosPorFaixaChart({ alunos, faixas, titulo, dark = false }) {
     return (
       <Card style={{ marginBottom: 14 }}>
         <div style={blockTitleStyle}>{titulo || "Alunos por faixa"}</div>
-        <div style={{ fontSize: 12.5, color: LIGHT.muted, marginTop: -6, marginBottom: 14 }}>Total de alunos: <b style={{ color: LIGHT.ink }}>{total}</b></div>
         <div style={{ display: "flex", alignItems: "center", gap: 26, flexWrap: "wrap" }}>
           <div style={{ borderRadius: "50%", flexShrink: 0, boxShadow: `inset 0 0 0 1px ${LIGHT.line}` }}>
             <PizzaSVG dados={porFaixa} size={150} />
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 18px", flex: 1, minWidth: 220 }}>
-            {porFaixa.map((d, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5 }}>
-                <span style={{ width: 9, height: 9, borderRadius: 2.5, flexShrink: 0, background: d.color, boxShadow: d.borda ? `inset 0 0 0 1px ${d.borda}` : undefined }} />
-                <span style={{ color: "#3A3324", fontWeight: 500 }}>{d.name}</span>
-                <b style={{ marginLeft: "auto", color: LIGHT.muted, fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>{d.value}</b>
-              </div>
-            ))}
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <div style={{ fontSize: 12.5, color: LIGHT.muted, marginBottom: 10 }}>Total de alunos: <b style={{ color: LIGHT.ink }}>{total}</b></div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 18px" }}>
+              {porFaixa.map((d, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5 }}>
+                  <span style={{ width: 9, height: 9, borderRadius: 2.5, flexShrink: 0, background: d.color, boxShadow: d.borda ? `inset 0 0 0 1px ${d.borda}` : undefined }} />
+                  <span style={{ color: "#3A3324", fontWeight: 500 }}>{d.name}</span>
+                  <b style={{ marginLeft: "auto", color: LIGHT.muted, fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>{d.value}</b>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </Card>
