@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid } from "recharts";
 import { Shield, User, Users, QrCode, Camera, Check, Plus, Trash2, X, Award, CalendarCheck, CreditCard, ChevronRight, LogOut, Gift, RefreshCw, Download, Share } from "lucide-react";
-import { loadAll, saveAll, saveAlunos, salvarInscricaoPush, notificarPush } from "./db.js";
-import { uploadArquivo, removerArquivo, pg } from "./supabaseClient.js";
+import { loadAll, saveAll, saveAlunos, salvarInscricaoPush, notificarPush, criarContaAuth, redefinirSenhaAuth } from "./db.js";
+import { uploadArquivo, removerArquivo, pg, supabaseAuth, definirLembrarSessao } from "./supabaseClient.js";
 
 const VAPID_PUBLIC_KEY = "BGKxQaeijzD265ey6QLdzFQDzzl9zZMthYYjlkAFKvsr-AtpsqrcanHs96CePRDF9wU6_N0z8-IU1PFVg3IpB6I";
 
@@ -30,9 +30,33 @@ async function inscreverPush({ alunoId, professorId }) {
   }
 }
 
+/*
+ * Mantém a conta de login (Supabase Auth) de um aluno/professor alinhada com o formulário de
+ * cadastro/edição: cria a conta se ainda não existe (precisa de e-mail) e atualiza a senha lá se
+ * ela mudou. Devolve o patch a mesclar no registro local (ex: { authUserId }) ou null se nada
+ * precisou mudar. Lança erro com mensagem amigável pro chamador decidir o que fazer.
+ */
+async function sincronizarContaAuth(registroAnterior, form) {
+  if (!form.email) return null;
+  if (!registroAnterior?.authUserId) {
+    try {
+      const authUserId = await criarContaAuth(form.email, form.senha);
+      return { authUserId };
+    } catch (e) {
+      throw new Error(`Não foi possível criar o login desta pessoa: ${e.message}`);
+    }
+  }
+  if (form.senha && form.senha !== registroAnterior.senha) {
+    try {
+      await redefinirSenhaAuth(registroAnterior.authUserId, form.senha);
+    } catch (e) {
+      throw new Error(`Cadastro salvo, mas não foi possível atualizar a senha de login: ${e.message}`);
+    }
+  }
+  return null;
+}
+
 const STORAGE_KEY = "qg-data-v3";
-const REMEMBER_KEY = "qg-aluno-lembrado";
-const REMEMBER_PROF_KEY = "qg-professor-lembrado";
 const PERIOD_MESES = { mensal: 1, trimestral: 3, semestral: 6, anual: 12 };
 const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 const DIAS_SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
@@ -919,7 +943,8 @@ export default function App({ modo = "admin" }) {
   const [adminDesbloqueado, setAdminDesbloqueado] = useState(false);
   const [activeProfId, setActiveProfId] = useState(null);
   const [activeAlunoId, setActiveAlunoId] = useState(null);
-  const lembrancaChecada = useRef(false);
+  // undefined = ainda não checou a sessão do Supabase Auth; null = checou e não tem sessão.
+  const [authUserId, setAuthUserId] = useState(undefined);
 
   useEffect(() => {
     // Bloqueia pinça/zoom de vez — o Safari às vezes ignora o viewport meta
@@ -943,8 +968,14 @@ export default function App({ modo = "admin" }) {
     };
   }, []);
 
+  // Sessão real do Supabase Auth: checa a sessão persistida no boot e escuta login/logout/expiração.
   useEffect(() => {
-    try { setAdminDesbloqueado(sessionStorage.getItem("qg-admin-ok") === "1"); } catch (_) {}
+    let ativo = true;
+    supabaseAuth.getSession().then(({ data: { session } }) => { if (ativo) setAuthUserId(session?.user?.id || null); });
+    const { data: assinatura } = supabaseAuth.onAuthStateChange((_evento, session) => {
+      setAuthUserId(session?.user?.id || null);
+    });
+    return () => { ativo = false; assinatura?.subscription?.unsubscribe(); };
   }, []);
 
   const carregar = async () => {
@@ -966,16 +997,18 @@ export default function App({ modo = "admin" }) {
 
   useEffect(() => { carregar(); }, []);
 
+  // Deriva quem está logado a partir da sessão real: acha o registro local (aluno/professor/admin)
+  // cujo auth_user_id bate com o usuário autenticado no Supabase. Some se a sessão cair ou se a
+  // conta tiver sido desativada nesse meio-tempo (ativo === false não conta como logado).
   useEffect(() => {
-    if (!data || lembrancaChecada.current) return;
-    lembrancaChecada.current = true;
-    try {
-      const lembrado = localStorage.getItem(REMEMBER_KEY);
-      if (lembrado && data.alunos.some((a) => a.id === lembrado)) setActiveAlunoId(lembrado);
-      const lembradoProf = localStorage.getItem(REMEMBER_PROF_KEY);
-      if (lembradoProf && data.professores.some((p) => p.id === lembradoProf)) setActiveProfId(lembradoProf);
-    } catch (_) {}
-  }, [data]);
+    if (!data || authUserId === undefined) return;
+    if (!authUserId) { setAdminDesbloqueado(false); setActiveProfId(null); setActiveAlunoId(null); return; }
+    const aluno = data.alunos.find((a) => a.authUserId === authUserId && a.ativo !== false);
+    const prof = data.professores.find((p) => p.authUserId === authUserId && p.ativo !== false);
+    setActiveAlunoId(aluno ? aluno.id : null);
+    setActiveProfId(prof ? prof.id : null);
+    setAdminDesbloqueado(data.academia.adminAuthUserId === authUserId);
+  }, [data, authUserId]);
 
   const save = async (next) => {
     const anterior = data;
@@ -987,16 +1020,9 @@ export default function App({ modo = "admin" }) {
     }
   };
 
-  const desbloquearAdmin = () => {
-    try { sessionStorage.setItem("qg-admin-ok", "1"); } catch (_) {}
-    setAdminDesbloqueado(true);
-  };
-  const sairAdmin = () => {
-    try { sessionStorage.removeItem("qg-admin-ok"); } catch (_) {}
-    setAdminDesbloqueado(false);
-  };
+  const sairAdmin = () => { supabaseAuth.signOut(); };
 
-  if (loading) return <div style={{ padding: 40, fontFamily: "Inter", color: "#5A5648" }}>Carregando dados do banco…</div>;
+  if (loading || authUserId === undefined) return <div style={{ padding: 40, fontFamily: "Inter", color: "#5A5648" }}>Carregando dados do banco…</div>;
 
   if (erroConexao && !data) {
     return (
@@ -1031,17 +1057,17 @@ export default function App({ modo = "admin" }) {
       <div style={{ flex: ehDesktopTop ? 1 : "initial", display: "flex", flexDirection: "column", background: role === "aluno" && !emTelaLoginPreta && ehDesktopTop ? "#0B0D12" : undefined }}>
         {role === "admin" && (
           <div style={{ maxWidth: 980, margin: "0 auto", padding: "22px 20px 60px", width: "100%", boxSizing: "border-box" }}>
-            {adminDesbloqueado ? <AdminView data={data} save={save} onSairAdmin={sairAdmin} /> : <AdminGate senhaCorreta={data.academia.senhaAdmin} onUnlock={desbloquearAdmin} />}
+            {adminDesbloqueado ? <AdminView data={data} save={save} onSairAdmin={sairAdmin} /> : <AdminGate />}
           </div>
         )}
         {role === "professor" && (
           <div style={{ maxWidth: emTelaLoginPreta && ehDesktopTop ? "none" : 980, margin: "0 auto", width: "100%", padding: !emTelaLoginPreta && ehDesktopTop ? "22px 20px 60px" : undefined, boxSizing: "border-box" }}>
-            <ProfessorView data={data} save={save} activeProfId={activeProfId} setActiveProfId={setActiveProfId} />
+            <ProfessorView data={data} save={save} activeProfId={activeProfId} />
           </div>
         )}
         {role === "aluno" && (
           <div style={{ maxWidth: emTelaLoginPreta && ehDesktopTop ? "none" : 980, margin: "0 auto", width: "100%" }}>
-            <AlunoView data={data} save={save} activeAlunoId={activeAlunoId} setActiveAlunoId={setActiveAlunoId} />
+            <AlunoView data={data} save={save} activeAlunoId={activeAlunoId} />
           </div>
         )}
       </div>
@@ -1062,24 +1088,32 @@ export default function App({ modo = "admin" }) {
   );
 }
 
-function AdminGate({ senhaCorreta, onUnlock }) {
+function AdminGate() {
+  const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
   const [erro, setErro] = useState("");
-  const entrar = () => {
-    if (senha.trim() === (senhaCorreta || "").trim()) { setErro(""); onUnlock(); }
-    else setErro("Senha incorreta.");
+  const [carregando, setCarregando] = useState(false);
+  const entrar = async () => {
+    setErro("");
+    setCarregando(true);
+    definirLembrarSessao(false);
+    const { error } = await supabaseAuth.signInWithPassword({ email: email.trim().toLowerCase(), password: senha.trim() });
+    setCarregando(false);
+    if (error) setErro("E-mail ou senha incorretos.");
   };
   return (
     <div style={{ maxWidth: 360, margin: "40px auto" }}>
       <SectionTitle sub="Acesso restrito ao administrador">Painel administrador</SectionTitle>
       <Card>
+        <Field label="E-mail de administrador">
+          <input style={inputStyle} value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && entrar()} />
+        </Field>
         <Field label="Senha de administrador">
           <input type="password" style={inputStyle} value={senha} onChange={(e) => setSenha(e.target.value)} onKeyDown={(e) => e.key === "Enter" && entrar()} />
         </Field>
         {erro && <div style={{ fontSize: 12.5, color: "#B3261E", marginTop: 6 }}>{erro}</div>}
-        <div style={{ marginTop: 12 }}><Button icon={Check} onClick={entrar}>Entrar</Button></div>
+        <div style={{ marginTop: 12 }}><Button icon={Check} onClick={entrar} disabled={carregando}>Entrar</Button></div>
       </Card>
-      <p style={{ fontSize: 11.5, color: "#8A8574", marginTop: 10 }}>Essa senha é uma proteção básica no navegador (não substitui um login seguro de verdade). Troque em Configurações.</p>
     </div>
   );
 }
@@ -1570,35 +1604,85 @@ function AdminView({ data, save, onSairAdmin }) {
   const termosPendentes = data.alunos.filter((a) => !a.termoAceito && !a.termoAssinadoManual).length;
 
   const addAluno = async (form) => {
-    const a = { id: uid(), tipo: "aluno", matricula: hoje(), codigo: proximoCodigoAluno(data.alunos), ultimoPagamento: null, foto: null, pagamentos: [], checkinsDesdeGraduacao: 0, primeiroAcesso: true, termoAceito: false, termoAceitoEm: null, ativo: true, ...form };
+    let authPatch = null;
+    try {
+      authPatch = await sincronizarContaAuth(null, form);
+    } catch (e) {
+      alert(e.message);
+      return;
+    }
+    const a = { id: uid(), tipo: "aluno", matricula: hoje(), codigo: proximoCodigoAluno(data.alunos), ultimoPagamento: null, foto: null, pagamentos: [], checkinsDesdeGraduacao: 0, primeiroAcesso: true, termoAceito: false, termoAceitoEm: null, ativo: true, ...form, ...authPatch };
     await save({ ...data, alunos: [...data.alunos, a] });
     setNovoAluno(false);
   };
-  const editarAluno = async (id, form) => { const alunos = data.alunos.map((a) => (a.id === id ? { ...a, ...form } : a)); await save({ ...data, alunos }); setEditandoAluno(null); };
+  const editarAluno = async (id, form) => {
+    const anterior = data.alunos.find((a) => a.id === id);
+    let authPatch = null;
+    try {
+      authPatch = await sincronizarContaAuth(anterior, form);
+    } catch (e) {
+      alert(e.message);
+    }
+    const alunos = data.alunos.map((a) => (a.id === id ? { ...a, ...form, ...authPatch } : a));
+    await save({ ...data, alunos });
+    setEditandoAluno(null);
+  };
   const removerAluno = async (id) => { await save({ ...data, alunos: data.alunos.filter((a) => a.id !== id) }); };
   const resetarSenha = async (id) => {
+    const aluno = data.alunos.find((a) => a.id === id);
+    if (!aluno?.authUserId) { alert("Este aluno ainda não tem login real — cadastre um e-mail pra ele primeiro."); return; }
     const nova = randomSenha();
-    const alunos = data.alunos.map((a) => (a.id === id ? { ...a, senha: nova } : a));
-    await save({ ...data, alunos });
-    setSenhaGerada({ id, senha: nova });
+    try {
+      await redefinirSenhaAuth(aluno.authUserId, nova);
+      setSenhaGerada({ id, senha: nova });
+    } catch (e) {
+      alert(`Não foi possível redefinir a senha: ${e.message}`);
+    }
   };
   const alternarAtivoAluno = async (id) => {
     const alunos = data.alunos.map((a) => (a.id === id ? { ...a, ativo: a.ativo === false ? true : false } : a));
     await save({ ...data, alunos });
   };
 
-  const addProf = async (form) => { const p = { id: uid(), tipo: "professor", ...form }; await save({ ...data, professores: [...data.professores, p] }); setNovoProf(false); };
-  const editarProf = async (id, form) => { const professores = data.professores.map((p) => (p.id === id ? { ...p, ...form } : p)); await save({ ...data, professores }); setEditandoProf(null); };
+  const addProf = async (form) => {
+    let authPatch = null;
+    try {
+      authPatch = await sincronizarContaAuth(null, form);
+    } catch (e) {
+      alert(e.message);
+      return;
+    }
+    const p = { id: uid(), tipo: "professor", ...form, ...authPatch };
+    await save({ ...data, professores: [...data.professores, p] });
+    setNovoProf(false);
+  };
+  const editarProf = async (id, form) => {
+    const anterior = data.professores.find((p) => p.id === id);
+    let authPatch = null;
+    try {
+      authPatch = await sincronizarContaAuth(anterior, form);
+    } catch (e) {
+      alert(e.message);
+    }
+    const professores = data.professores.map((p) => (p.id === id ? { ...p, ...form, ...authPatch } : p));
+    await save({ ...data, professores });
+    setEditandoProf(null);
+  };
   const removerProf = async (id) => { await save({ ...data, professores: data.professores.filter((p) => p.id !== id) }); };
   const alternarAtivoProf = async (id) => {
     const professores = data.professores.map((p) => (p.id === id ? { ...p, ativo: p.ativo === false ? true : false } : p));
     await save({ ...data, professores });
   };
   const resetarSenhaProf = async (id) => {
+    const prof = data.professores.find((p) => p.id === id);
+    if (!prof?.authUserId) { alert("Este professor ainda não tem login real — cadastre um e-mail pra ele primeiro."); return; }
     const nova = randomSenha();
-    const professores = data.professores.map((p) => (p.id === id ? { ...p, senha: nova } : p));
-    await save({ ...data, professores });
-    setSenhaGeradaProf({ id, senha: nova });
+    try {
+      await redefinirSenhaAuth(prof.authUserId, nova);
+      setSenhaGeradaProf({ id, senha: nova });
+    } catch (e) {
+      alert(`Não foi possível redefinir a senha: ${e.message}`);
+    }
   };
 
   const addTurma = async (form) => { const t = { id: uid(), ...form }; await save({ ...data, turmas: [...data.turmas, t] }); setNovaTurma(false); };
@@ -4240,7 +4324,6 @@ function ConfiguracoesAdmin({ data, save }) {
   const [logo, setLogo] = useState(data.academia.logo || null);
   const [termoPdf, setTermoPdf] = useState(data.academia.termoPdf || null);
   const [termoPdfNome, setTermoPdfNome] = useState(data.academia.termoPdfNome || "");
-  const [senhaAdmin, setSenhaAdmin] = useState(data.academia.senhaAdmin || "");
   const [endereco, setEndereco] = useState(data.academia.endereco || "");
   const [latitude, setLatitude] = useState(data.academia.latitude ?? "");
   const [longitude, setLongitude] = useState(data.academia.longitude ?? "");
@@ -4275,7 +4358,7 @@ function ConfiguracoesAdmin({ data, save }) {
     await save({
       ...data,
       academia: {
-        ...data.academia, nome, chavePix, termoPadrao: termo, logo, termoPdf, termoPdfNome, senhaAdmin,
+        ...data.academia, nome, chavePix, termoPadrao: termo, logo, termoPdf, termoPdfNome,
         endereco, latitude: latitude === "" ? null : Number(latitude), longitude: longitude === "" ? null : Number(longitude),
         raioCheckin: Number(raioCheckin) || 150, instagram, facebook, whatsapp, mensagemAniversario, regrasTatame, marcaDagua, golpesProibidosPdf, golpesProibidosPdfNome,
       },
@@ -4294,7 +4377,6 @@ function ConfiguracoesAdmin({ data, save }) {
         </Field>
         <Field label="Nome da academia/equipe" labelColor="#9B9891"><input style={inputStyle} value={nome} onChange={(e) => setNome(e.target.value)} /></Field>
         <Field label="Chave PIX para pagamentos" labelColor="#9B9891"><input style={inputStyle} value={chavePix} onChange={(e) => setChavePix(e.target.value)} placeholder="ex: e-mail, telefone ou chave aleatória" /></Field>
-        <Field label="Senha de acesso ao painel administrador" labelColor="#9B9891"><input style={inputStyle} value={senhaAdmin} onChange={(e) => setSenhaAdmin(e.target.value)} /></Field>
         <Field label="Endereço do QG" labelColor="#9B9891"><input style={inputStyle} value={endereco} onChange={(e) => setEndereco(e.target.value)} placeholder="Rua, número, bairro, cidade" /></Field>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
           <Field label="Latitude" labelColor="#9B9891"><input type="number" step="any" style={inputStyle} value={latitude} onChange={(e) => setLatitude(e.target.value)} /></Field>
@@ -4890,18 +4972,25 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
   );
 }
 
-function ProfessorLogin({ data, onLogin }) {
+function ProfessorLogin({ data }) {
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
   const [lembrar, setLembrar] = useState(true);
   const [erro, setErro] = useState("");
+  const [carregando, setCarregando] = useState(false);
 
-  const entrar = () => {
-    const prof = data.professores.find((p) => p.email && p.email.toLowerCase() === email.trim().toLowerCase() && (p.senha || "").trim() === senha.trim());
-    if (!prof) { setErro("E-mail ou senha incorretos."); return; }
-    if (prof.ativo === false) { setErro("Seu acesso foi desativado. Fale com a administração da academia."); return; }
+  const entrar = async () => {
     setErro("");
-    onLogin(prof.id, lembrar);
+    setCarregando(true);
+    definirLembrarSessao(lembrar);
+    const { error } = await supabaseAuth.signInWithPassword({ email: email.trim().toLowerCase(), password: senha.trim() });
+    if (error) { setErro("E-mail ou senha incorretos."); setCarregando(false); return; }
+    const prof = data.professores.find((p) => p.email && p.email.toLowerCase() === email.trim().toLowerCase());
+    if (prof && prof.ativo === false) {
+      setErro("Seu acesso foi desativado. Fale com a administração da academia.");
+      await supabaseAuth.signOut();
+    }
+    setCarregando(false);
   };
 
   return (
@@ -4919,23 +5008,16 @@ function ProfessorLogin({ data, onLogin }) {
           <input type="checkbox" checked={lembrar} onChange={(e) => setLembrar(e.target.checked)} /> Lembrar minha senha neste aparelho
         </label>
         {erro && <div style={{ fontSize: 12.5, color: "#FF8A80", fontWeight: 600 }}>{erro}</div>}
-        <Button icon={Check} variant="gold" onClick={entrar}>Entrar</Button>
+        <Button icon={Check} variant="gold" onClick={entrar} disabled={carregando}>Entrar</Button>
       </div>
       <p style={{ fontSize: 11.5, color: "#8A8574", marginTop: 14 }}>Esqueceu a senha? Peça para a administração redefinir no cadastro do professor.</p>
     </LoginPreto>
   );
 }
 
-function ProfessorView({ data, save, activeProfId, setActiveProfId }) {
+function ProfessorView({ data, save, activeProfId }) {
   const prof = data.professores.find((p) => p.id === activeProfId);
-  const handleLogin = (id, lembrar) => {
-    try { if (lembrar) localStorage.setItem(REMEMBER_PROF_KEY, id); else localStorage.removeItem(REMEMBER_PROF_KEY); } catch (_) {}
-    setActiveProfId(id);
-  };
-  const handleSair = () => {
-    try { localStorage.removeItem(REMEMBER_PROF_KEY); } catch (_) {}
-    setActiveProfId(null);
-  };
+  const handleSair = () => { supabaseAuth.signOut(); };
 
   // Verifica de tempos em tempos, direto no banco, se o acesso deste professor ainda está ativo —
   // pra derrubar a sessão automaticamente mesmo se ele já estiver logado em outro aparelho quando for desativado.
@@ -4952,7 +5034,7 @@ function ProfessorView({ data, save, activeProfId, setActiveProfId }) {
     return () => clearInterval(intervalo);
   }, [prof?.id, prof?.ativo]);
 
-  if (!prof || prof.ativo === false) return <ProfessorLogin data={data} onLogin={handleLogin} />;
+  if (!prof || prof.ativo === false) return <ProfessorLogin data={data} />;
   return <ProfessorDashboard data={data} save={save} prof={prof} onSair={handleSair} />;
 }
 
@@ -5046,20 +5128,39 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
   const [alunosExpandidos, setAlunosExpandidos] = useState({});
   const alternarExpandido = (id) => setAlunosExpandidos((prev) => ({ ...prev, [id]: !prev[id] }));
   const addAlunoProf = async (form) => {
-    const a = { id: uid(), tipo: "aluno", matricula: hoje(), codigo: proximoCodigoAluno(data.alunos), ultimoPagamento: null, foto: null, pagamentos: [], checkinsDesdeGraduacao: 0, primeiroAcesso: true, termoAceito: false, termoAceitoEm: null, ativo: true, ...form, professorId: prof.id };
+    let authPatch = null;
+    try {
+      authPatch = await sincronizarContaAuth(null, form);
+    } catch (e) {
+      alert(e.message);
+      return;
+    }
+    const a = { id: uid(), tipo: "aluno", matricula: hoje(), codigo: proximoCodigoAluno(data.alunos), ultimoPagamento: null, foto: null, pagamentos: [], checkinsDesdeGraduacao: 0, primeiroAcesso: true, termoAceito: false, termoAceitoEm: null, ativo: true, ...form, professorId: prof.id, ...authPatch };
     await save({ ...data, alunos: [...data.alunos, a] });
     setNovoAluno(false);
   };
   const editarAlunoProf = async (id, form) => {
-    const alunos = data.alunos.map((a) => (a.id === id ? { ...a, ...form } : a));
+    const anterior = data.alunos.find((a) => a.id === id);
+    let authPatch = null;
+    try {
+      authPatch = await sincronizarContaAuth(anterior, form);
+    } catch (e) {
+      alert(e.message);
+    }
+    const alunos = data.alunos.map((a) => (a.id === id ? { ...a, ...form, ...authPatch } : a));
     await save({ ...data, alunos });
     setEditandoAluno(null);
   };
   const resetarSenhaAlunoProf = async (id) => {
+    const aluno = data.alunos.find((a) => a.id === id);
+    if (!aluno?.authUserId) { alert("Este aluno ainda não tem login real — cadastre um e-mail pra ele primeiro."); return; }
     const nova = randomSenha();
-    const alunos = data.alunos.map((a) => (a.id === id ? { ...a, senha: nova } : a));
-    await save({ ...data, alunos });
-    setSenhaGeradaAluno({ id, senha: nova });
+    try {
+      await redefinirSenhaAuth(aluno.authUserId, nova);
+      setSenhaGeradaAluno({ id, senha: nova });
+    } catch (e) {
+      alert(`Não foi possível redefinir a senha: ${e.message}`);
+    }
   };
   const alternarAtivoAlunoProf = async (id) => {
     const alunos = data.alunos.map((a) => (a.id === id ? { ...a, ativo: a.ativo === false ? true : false } : a));
@@ -5473,63 +5574,45 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
 }
 
 /* ---------------- ALUNO ---------------- */
-function AlunoLogin({ data, save, onLogin }) {
+function AlunoLogin({ data }) {
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
   const [lembrar, setLembrar] = useState(true);
   const [erro, setErro] = useState("");
-  const [modoReset, setModoReset] = useState(false);
-  const [emailReset, setEmailReset] = useState("");
-  const [msgReset, setMsgReset] = useState("");
+  const [carregando, setCarregando] = useState(false);
 
-  const entrar = () => {
-    const aluno = data.alunos.find((a) => a.email && a.email.toLowerCase() === email.trim().toLowerCase() && (a.senha || "").trim() === senha.trim());
-    if (!aluno) { setErro("E-mail ou senha incorretos."); return; }
-    if (aluno.ativo === false) { setErro("Seu acesso foi desativado. Fale com a administração da academia."); return; }
+  const entrar = async () => {
     setErro("");
-    onLogin(aluno.id, lembrar);
-  };
-
-  const resetar = async () => {
-    const aluno = data.alunos.find((a) => a.email && a.email.toLowerCase() === emailReset.trim().toLowerCase());
-    if (!aluno) { setMsgReset("Não encontramos esse e-mail cadastrado."); return; }
-    const nova = randomSenha();
-    const alunos = data.alunos.map((a) => (a.id === aluno.id ? { ...a, senha: nova } : a));
-    await save({ ...data, alunos });
-    setMsgReset(`Senha redefinida! Nova senha: ${nova}. (Envio automático por e-mail ainda não está configurado — anote e repasse ao aluno.)`);
+    setCarregando(true);
+    definirLembrarSessao(lembrar);
+    const { error } = await supabaseAuth.signInWithPassword({ email: email.trim().toLowerCase(), password: senha.trim() });
+    if (error) { setErro("E-mail ou senha incorretos."); setCarregando(false); return; }
+    const aluno = data.alunos.find((a) => a.email && a.email.toLowerCase() === email.trim().toLowerCase());
+    if (aluno && aluno.ativo === false) {
+      setErro("Seu acesso foi desativado. Fale com a administração da academia.");
+      await supabaseAuth.signOut();
+    }
+    setCarregando(false);
   };
 
   return (
     <LoginPreto logo={data.academia.logo} titulo="Área do aluno" subtitulo="Faça login para acessar sua área">
-      {!modoReset ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: "#C9C4B4", textTransform: "uppercase", letterSpacing: 0.4 }}>E-mail</span>
-            <input style={inputStyleDark} value={email} onChange={(e) => setEmail(e.target.value)} />
-          </label>
-          <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: "#C9C4B4", textTransform: "uppercase", letterSpacing: 0.4 }}>Senha</span>
-            <input type="password" style={inputStyleDark} value={senha} onChange={(e) => setSenha(e.target.value)} onKeyDown={(e) => e.key === "Enter" && entrar()} />
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "#C9C4B4" }}>
-            <input type="checkbox" checked={lembrar} onChange={(e) => setLembrar(e.target.checked)} /> Lembrar minha senha neste aparelho
-          </label>
-          {erro && <div style={{ fontSize: 12.5, color: "#FF8A80", fontWeight: 600 }}>{erro}</div>}
-          <Button icon={Check} variant="gold" onClick={entrar}>Entrar</Button>
-          <button onClick={() => { setModoReset(true); setMsgReset(""); }} style={{ background: "none", border: "none", color: "#C9A227", fontSize: 12.5, textDecoration: "underline", cursor: "pointer", textAlign: "left" }}>Esqueci minha senha</button>
-        </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: "#C9C4B4", textTransform: "uppercase", letterSpacing: 0.4 }}>Informe seu e-mail cadastrado</span>
-            <input style={inputStyleDark} value={emailReset} onChange={(e) => setEmailReset(e.target.value)} />
-          </label>
-          <Button icon={Check} variant="gold" onClick={resetar}>Redefinir senha</Button>
-          {msgReset && <div style={{ fontSize: 12.5, color: "#C9C4B4" }}>{msgReset}</div>}
-          <button onClick={() => setModoReset(false)} style={{ background: "none", border: "none", color: "#C9A227", fontSize: 12.5, textDecoration: "underline", cursor: "pointer", textAlign: "left" }}>Voltar ao login</button>
-        </div>
-      )}
-      <p style={{ fontSize: 11.5, color: "#8A8574", marginTop: 14 }}>Não tem acesso ainda? Peça ao professor ou à administração para te cadastrar.</p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: "#C9C4B4", textTransform: "uppercase", letterSpacing: 0.4 }}>E-mail</span>
+          <input style={inputStyleDark} value={email} onChange={(e) => setEmail(e.target.value)} />
+        </label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: "#C9C4B4", textTransform: "uppercase", letterSpacing: 0.4 }}>Senha</span>
+          <input type="password" style={inputStyleDark} value={senha} onChange={(e) => setSenha(e.target.value)} onKeyDown={(e) => e.key === "Enter" && entrar()} />
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "#C9C4B4" }}>
+          <input type="checkbox" checked={lembrar} onChange={(e) => setLembrar(e.target.checked)} /> Lembrar minha senha neste aparelho
+        </label>
+        {erro && <div style={{ fontSize: 12.5, color: "#FF8A80", fontWeight: 600 }}>{erro}</div>}
+        <Button icon={Check} variant="gold" onClick={entrar} disabled={carregando}>Entrar</Button>
+      </div>
+      <p style={{ fontSize: 11.5, color: "#8A8574", marginTop: 14 }}>Esqueceu a senha ou não tem acesso ainda? Peça ao professor ou à administração para redefinir/cadastrar.</p>
     </LoginPreto>
   );
 }
@@ -5631,16 +5714,9 @@ function PrimeiroAcessoTermo({ data, save, aluno }) {
   );
 }
 
-function AlunoView({ data, save, activeAlunoId, setActiveAlunoId }) {
+function AlunoView({ data, save, activeAlunoId }) {
   const aluno = data.alunos.find((a) => a.id === activeAlunoId);
-  const handleLogin = (id, lembrar) => {
-    try { if (lembrar) localStorage.setItem(REMEMBER_KEY, id); else localStorage.removeItem(REMEMBER_KEY); } catch (_) {}
-    setActiveAlunoId(id);
-  };
-  const handleSair = () => {
-    try { localStorage.removeItem(REMEMBER_KEY); } catch (_) {}
-    setActiveAlunoId(null);
-  };
+  const handleSair = () => { supabaseAuth.signOut(); };
 
   // Mesma lógica do professor: confere no banco de tempos em tempos se o acesso continua ativo,
   // pra derrubar a sessão automaticamente se o aluno for desativado enquanto já está logado.
@@ -5657,7 +5733,7 @@ function AlunoView({ data, save, activeAlunoId, setActiveAlunoId }) {
     return () => clearInterval(intervalo);
   }, [aluno?.id, aluno?.ativo]);
 
-  if (!aluno || aluno.ativo === false) return <AlunoLogin data={data} save={save} onLogin={handleLogin} />;
+  if (!aluno || aluno.ativo === false) return <AlunoLogin data={data} />;
   if (aluno.primeiroAcesso && (data.academia.termoPadrao || data.academia.termoPdf)) return <PrimeiroAcessoTermo data={data} save={save} aluno={aluno} />;
   return <AlunoDashboard data={data} save={save} aluno={aluno} onSair={handleSair} />;
 }
@@ -5739,11 +5815,12 @@ function AlunoDashboard({ data, save, aluno, onSair }) {
 
   const alterarSenha = async () => {
     setMsgSenha("");
-    if ((aluno.senha || "").trim() !== senhaAtual.trim()) { setMsgSenha("Senha atual incorreta."); return; }
     if (!novaSenha.trim()) { setMsgSenha("Digite a nova senha."); return; }
     if (novaSenha.trim() !== confirmarSenha.trim()) { setMsgSenha("As senhas novas não coincidem."); return; }
-    const alunos = data.alunos.map((a) => (a.id === aluno.id ? { ...a, senha: novaSenha.trim() } : a));
-    await save({ ...data, alunos });
+    const { error: erroReauth } = await supabaseAuth.signInWithPassword({ email: aluno.email, password: senhaAtual.trim() });
+    if (erroReauth) { setMsgSenha("Senha atual incorreta."); return; }
+    const { error: erroUpdate } = await supabaseAuth.updateUser({ password: novaSenha.trim() });
+    if (erroUpdate) { setMsgSenha(`Não foi possível alterar a senha: ${erroUpdate.message}`); return; }
     setSenhaAtual(""); setNovaSenha(""); setConfirmarSenha("");
     setMsgSenha("Senha alterada com sucesso!");
   };

@@ -9,6 +9,7 @@ const MAPS = {
     instagram: "instagram", facebook: "facebook", whatsapp: "whatsapp",
     mensagemAniversario: "mensagem_aniversario", regrasTatame: "regras_tatame", marcaDagua: "marca_dagua",
     golpesProibidosPdf: "golpes_proibidos_pdf", golpesProibidosPdfNome: "golpes_proibidos_pdf_nome",
+    adminAuthUserId: "admin_auth_user_id", emailAdmin: "email_admin",
   },
   faixas: {
     id: "id", nome: "nome", cor: "cor", texto: "texto", borda: "borda", corPonta: "cor_ponta",
@@ -20,7 +21,7 @@ const MAPS = {
   professores: {
     id: "id", nome: "nome", email: "email", especialidade: "especialidade",
     telefone: "telefone", endereco: "endereco", faixaId: "faixa_id", grau: "grau", foto: "foto", senha: "senha",
-    dataNascimento: "data_nascimento", unidadeId: "unidade_id", ativo: "ativo",
+    dataNascimento: "data_nascimento", unidadeId: "unidade_id", ativo: "ativo", authUserId: "auth_user_id",
   },
   alunos: {
     id: "id", nome: "nome", email: "email", senha: "senha", primeiroAcesso: "primeiro_acesso",
@@ -29,7 +30,7 @@ const MAPS = {
     grau: "grau", dataNascimento: "data_nascimento", matricula: "matricula", planoId: "plano_id",
     diaVencimento: "dia_vencimento", ultimoPagamento: "ultimo_pagamento",
     checkinsDesdeGraduacao: "checkins_desde_graduacao", termoAceito: "termo_aceito",
-    termoAceitoEm: "termo_aceito_em", termoAssinadoManual: "termo_assinado_manual", professorId: "professor_id", peso: "peso", apelido: "apelido", unidadeId: "unidade_id", ativo: "ativo", turmaId: "turma_id", assinaturaTermo: "assinatura_termo", codigo: "codigo",
+    termoAceitoEm: "termo_aceito_em", termoAssinadoManual: "termo_assinado_manual", professorId: "professor_id", peso: "peso", apelido: "apelido", unidadeId: "unidade_id", ativo: "ativo", turmaId: "turma_id", assinaturaTermo: "assinatura_termo", codigo: "codigo", authUserId: "auth_user_id",
   },
   pagamentos: { id: "id", alunoId: "aluno_id", data: "data", valor: "valor" },
   sessoes_checkin: {
@@ -226,4 +227,26 @@ export async function notificarPush(titulo, mensagem, destinatario) {
   } catch (_) {
     // A função de envio pode ainda não estar publicada — não bloqueia o resto do app.
   }
+}
+
+async function chamarGerenciarContas(body) {
+  const res = await fetch(`${SUPABASE_URL_EXPORT}/functions/v1/gerenciar-contas`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_KEY_EXPORT}`, apikey: SUPABASE_KEY_EXPORT },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || json.error) throw new Error(json.error || `Falha ao gerenciar conta (${res.status})`);
+  return json;
+}
+
+/* Cria o usuário real no Supabase Auth pra um aluno/professor novo e devolve o authUserId a salvar no registro. */
+export async function criarContaAuth(email, senha) {
+  const { authUserId } = await chamarGerenciarContas({ acao: "criar", email, senha });
+  return authUserId;
+}
+
+/* Redefine a senha de um aluno/professor já migrado pro Supabase Auth. */
+export async function redefinirSenhaAuth(authUserId, senha) {
+  await chamarGerenciarContas({ acao: "redefinir_senha", authUserId, senha });
 }

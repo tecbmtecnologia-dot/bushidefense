@@ -14,12 +14,44 @@ const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "sb_publishable_f
 export const SUPABASE_KEY_EXPORT = SUPABASE_KEY;
 export const SUPABASE_URL_EXPORT = SUPABASE_URL;
 
-// Cliente oficial, usado só pra autenticação real (Supabase Auth) por enquanto — login,
-// sessão e refresh de token. As leituras/escritas do app continuam pelo `pg` abaixo (chave
-// anônima) até a Fase 2 dessa migração, quando as telas de login passam a usar isso de fato
-// e as consultas passam a levar o token da pessoa logada em vez da chave anônima pura.
+// Cliente oficial, usado pra autenticação real (Supabase Auth) — login, sessão e refresh de
+// token. As leituras/escritas do app continuam pelo `pg` abaixo (chave anônima); ligar RLS e
+// passar a usar o token da pessoa logada nessas chamadas fica pra uma etapa futura.
+//
+// index.html, alunos.html e professores.html são 3 páginas separadas do mesmo site (mesma
+// origem), mas cada uma loga um papel diferente (admin/aluno/professor) — por isso a chave de
+// armazenamento da sessão inclui o pathname: sem isso, logar como aluno numa aba derrubaria a
+// sessão do professor lembrada em outra aba do mesmo navegador, já que as duas dividiriam a
+// mesma entrada no localStorage.
+const STORAGE_KEY = `qg-auth-session-${typeof window !== "undefined" ? window.location.pathname : "default"}`;
+
+// Onde a sessão é gravada quando a pessoa loga: localStorage (sobrevive fechar o navegador,
+// "lembrar" marcado) ou sessionStorage (some ao fechar a aba, "lembrar" desmarcado). As telas de
+// login chamam definirLembrarSessao(lembrar) logo antes de supabaseAuth.signInWithPassword.
+let storageAtiva = (() => { try { return window.localStorage; } catch (_) { return undefined; } })();
+
+export function definirLembrarSessao(lembrar) {
+  try { storageAtiva = lembrar ? window.localStorage : window.sessionStorage; } catch (_) {}
+}
+
+const storageAdapter = {
+  getItem: (key) => {
+    try { return window.localStorage.getItem(key) ?? window.sessionStorage.getItem(key); } catch (_) { return null; }
+  },
+  setItem: (key, value) => {
+    try {
+      storageAtiva.setItem(key, value);
+      const outra = storageAtiva === window.localStorage ? window.sessionStorage : window.localStorage;
+      outra.removeItem(key);
+    } catch (_) {}
+  },
+  removeItem: (key) => {
+    try { window.localStorage.removeItem(key); window.sessionStorage.removeItem(key); } catch (_) {}
+  },
+};
+
 export const supabaseAuth = createClient(SUPABASE_URL, SUPABASE_KEY, {
-  auth: { persistSession: true, autoRefreshToken: true, storageKey: "qg-auth-session" },
+  auth: { persistSession: true, autoRefreshToken: true, storageKey: STORAGE_KEY, storage: storageAdapter },
 }).auth;
 
 const BASE = `${SUPABASE_URL}/rest/v1`;
