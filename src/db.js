@@ -66,12 +66,17 @@ function fromDb(entity, row) {
   return obj;
 }
 
-/* Upsert de todas as linhas atuais + remoção das que não existem mais na lista (cobre criar, editar e excluir). */
-async function syncTable(entity, items) {
+/*
+ * Upsert das linhas em `items` + remoção das que não existem mais em `todosOsItens` (cobre
+ * criar, editar e excluir). `todosOsItens` é a lista completa da entidade (default: `items`) —
+ * só existe como parâmetro separado pra permitir mandar um upsert PARCIAL (ex: só a linha que
+ * mudou) sem perder o cálculo de exclusão, que precisa saber o conjunto completo de ids válidos.
+ */
+async function syncTable(entity, items, todosOsItens) {
   const rows = items.map((it) => toDb(entity, it));
   const existing = await pg.select(entity, "select=id");
   const existingIds = (existing || []).map((r) => r.id);
-  const nextIds = items.map((it) => it.id);
+  const nextIds = (todosOsItens || items).map((it) => it.id);
   const toDelete = existingIds.filter((id) => !nextIds.includes(id));
 
   if (rows.length) await pg.upsert(entity, rows);
@@ -186,7 +191,16 @@ export async function saveAll(next, anterior) {
   }
   if (mudou("planos")) tarefas.push({ nome: "planos", fn: () => syncTable("planos", next.planos) });
   if (mudou("turmas")) tarefas.push({ nome: "turmas", fn: () => syncTable("turmas", next.turmas) });
-  if (mudou("professores")) tarefas.push({ nome: "professores", fn: () => syncTable("professores", next.professores) });
+  if (mudou("professores")) {
+    // Manda pro banco só as linhas de professor que de fato mudaram (não a tabela inteira): um
+    // professor sem ser admin só tem permissão (RLS) pra escrever a própria linha, e o upsert é
+    // um único INSERT ... ON CONFLICT DO UPDATE — se ele incluir a linha de outro professor sem
+    // ter mudado nada nela, o Postgres AINDA testa a política daquela linha e rejeita a operação
+    // inteira. Comparação por referência funciona pelo mesmo motivo do `mudou` acima.
+    const anterioresPorId = new Map((anterior?.professores || []).map((p) => [p.id, p]));
+    const alterados = next.professores.filter((p) => anterioresPorId.get(p.id) !== p);
+    tarefas.push({ nome: "professores", fn: () => syncTable("professores", alterados, next.professores) });
+  }
   if (mudou("alunos")) {
     tarefas.push({ nome: "alunos", fn: () => syncTable("alunos", next.alunos) });
     // Pagamentos ficam dentro de cada aluno, então reenviamos junto sempre que o array de alunos mudar.
