@@ -1201,6 +1201,9 @@ function AdminGate() {
         {erro && <div style={{ fontSize: 12.5, color: "#B3261E", marginTop: 6 }}>{erro}</div>}
         <div style={{ marginTop: 12 }}><Button icon={Check} onClick={entrar} disabled={carregando}>Entrar</Button></div>
       </Card>
+      <div style={{ textAlign: "center", marginTop: 14, fontSize: 10.5, color: "#9B9891" }}>
+        <a href="/privacidade.html" target="_blank" rel="noreferrer" style={{ color: "#9B9891" }}>Política de Privacidade</a>
+      </div>
     </div>
   );
 }
@@ -4776,6 +4779,9 @@ function LoginPreto({ logo, titulo, subtitulo, children }) {
         <div style={{ marginTop: 40, paddingTop: 18, borderTop: "1px solid rgba(255,255,255,0.08)", fontSize: 10.5, color: "#FFFFFF", opacity: 0.7, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>
           <span>Desenvolvido por TECBM - Bruno Martins Tecnologia</span>
           <img src={LOGO_TECBM} alt="" style={{ height: 13, width: "auto", verticalAlign: "middle" }} />
+        </div>
+        <div style={{ marginTop: 6, fontSize: 10, opacity: 0.6 }}>
+          <a href="/privacidade.html" target="_blank" rel="noreferrer" style={{ color: "#8F97A8" }}>Política de Privacidade</a>
         </div>
       </div>
     </div>
