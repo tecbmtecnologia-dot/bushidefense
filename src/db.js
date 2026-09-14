@@ -1,4 +1,4 @@
-import { pg, SUPABASE_URL_EXPORT, SUPABASE_KEY_EXPORT } from "./supabaseClient.js";
+import { pg, supabaseAuth, SUPABASE_URL_EXPORT, SUPABASE_KEY_EXPORT } from "./supabaseClient.js";
 
 /* Mapas de campo: chave usada na interface -> coluna no banco. */
 const MAPS = {
@@ -242,9 +242,18 @@ export async function notificarPush(titulo, mensagem, destinatario) {
 }
 
 async function chamarGerenciarContas(body) {
+  // Manda o token da SESSÃO LOGADA (admin ou professor), não a chave pública — a function do
+  // lado do servidor confere esse token contra `academia`/`professores` antes de executar
+  // qualquer ação. Sem sessão (não deveria acontecer, essas ações exigem estar logado), cai
+  // pra chave pública mesmo, que a function vai rejeitar com 401.
+  let token = SUPABASE_KEY_EXPORT;
+  try {
+    const { data } = await supabaseAuth.getSession();
+    if (data?.session?.access_token) token = data.session.access_token;
+  } catch (_) {}
   const res = await fetch(`${SUPABASE_URL_EXPORT}/functions/v1/gerenciar-contas`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_KEY_EXPORT}`, apikey: SUPABASE_KEY_EXPORT },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, apikey: SUPABASE_KEY_EXPORT },
     body: JSON.stringify(body),
   });
   const json = await res.json().catch(() => ({}));
@@ -261,4 +270,32 @@ export async function criarContaAuth(email, senha) {
 /* Redefine a senha de um aluno/professor já migrado pro Supabase Auth. */
 export async function redefinirSenhaAuth(authUserId, senha) {
   await chamarGerenciarContas({ acao: "redefinir_senha", authUserId, senha });
+}
+
+/* Exclui de vez a conta de login (Supabase Auth) de um aluno/professor — parte do direito de
+   exclusão da LGPD. Não falha o fluxo de exclusão do cadastro se a conta já não existir mais. */
+export async function excluirContaAuth(authUserId) {
+  if (!authUserId) return;
+  try {
+    await chamarGerenciarContas({ acao: "excluir", authUserId });
+  } catch (_) {
+    // segue mesmo assim — o cadastro no app ainda vai ser removido das tabelas.
+  }
+}
+
+/* Direito de exclusão da LGPD: apaga o histórico do aluno espalhado pelas tabelas que não fazem
+   parte do array `alunos` sincronizado por syncTable (pagamentos já é coberto ali). Best-effort:
+   RLS pode negar algumas dessas linhas pra quem não é admin (ex: professor apagando aluno
+   próprio não consegue limpar push_subscriptions/recados_visualizados, só admin consegue) — cada
+   delete falha isolado sem travar os outros.
+   `alunoId` já não fica em nenhuma dessas linhas depois, então nenhuma sobra referenciando um
+   cadastro apagado. */
+export async function excluirDadosRelacionadosAluno(alunoId) {
+  const tabelas = [
+    ["checkins", "aluno_id"],
+    ["vendas", "aluno_id"],
+    ["push_subscriptions", "aluno_id"],
+    ["recados_visualizados", "aluno_id"],
+  ];
+  await Promise.allSettled(tabelas.map(([tabela, coluna]) => pg.deleteWhere(tabela, coluna, alunoId)));
 }

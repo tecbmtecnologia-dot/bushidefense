@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useLayoutEffect, createContext, useContext } from "react";
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid } from "recharts";
 import { Shield, User, Users, QrCode, Camera, Check, Plus, Trash2, X, Award, CalendarCheck, CreditCard, ChevronRight, LogOut, Gift, RefreshCw, Download, Share, LayoutDashboard, UserCog, Calendar, Wallet, FileText, Bell, MapPin, Video, Home, ShoppingBag, Receipt, PlayCircle, Settings } from "lucide-react";
-import { loadAll, saveAll, saveAlunos, salvarInscricaoPush, notificarPush, criarContaAuth, redefinirSenhaAuth } from "./db.js";
+import { loadAll, saveAll, saveAlunos, salvarInscricaoPush, notificarPush, criarContaAuth, redefinirSenhaAuth, excluirContaAuth, excluirDadosRelacionadosAluno } from "./db.js";
 import { uploadArquivo, removerArquivo, pg, supabaseAuth, definirLembrarSessao } from "./supabaseClient.js";
 
 const VAPID_PUBLIC_KEY = "BGKxQaeijzD265ey6QLdzFQDzzl9zZMthYYjlkAFKvsr-AtpsqrcanHs96CePRDF9wU6_N0z8-IU1PFVg3IpB6I";
@@ -124,6 +124,45 @@ function abrirPdfDataUrl(dataUrl) {
     window.open(dataUrl, "_blank");
   }
 }
+
+/* Baixa um objeto como arquivo .json — usado pra exportação de dados (direito de portabilidade/
+   acesso da LGPD). */
+function baixarJson(nomeArquivo, objeto) {
+  const blob = new Blob([JSON.stringify(objeto, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = nomeArquivo;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/* Monta o "pacote" de dados pessoais de um aluno pra exportação (LGPD, direito de acesso/
+   portabilidade — art. 18). Sem senha nem dado de outro aluno. */
+function dadosExportaveisAluno(aluno, data) {
+  const faixa = data.faixas.find((f) => f.id === aluno.faixaId);
+  return {
+    geradoEm: new Date().toISOString(),
+    dadosCadastrais: {
+      nome: aluno.nome, email: aluno.email || null, telefone: aluno.telefone || null,
+      endereco: aluno.endereco || null, dataNascimento: aluno.dataNascimento || null,
+      contatoEmergenciaNome: aluno.contatoEmergenciaNome || null,
+      contatoEmergenciaTelefone: aluno.contatoEmergenciaTelefone || null,
+      matricula: aluno.matricula || null, codigo: aluno.codigo || null,
+      faixa: faixa?.nome || null, grau: aluno.grau || 0,
+    },
+    consentimentoLgpd: {
+      termoAceito: !!aluno.termoAceito, termoAceitoEm: aluno.termoAceitoEm || null,
+      assinaturaRegistrada: !!aluno.assinaturaTermo,
+    },
+    pagamentos: (aluno.pagamentos || []).map((p) => ({ data: p.data, valor: p.valor })),
+    checkins: (data.checkins || []).filter((c) => c.alunoId === aluno.id).map((c) => ({ dataHora: c.dataHora })),
+    compras: (data.vendas || []).filter((v) => v.alunoId === aluno.id).map((v) => ({ produto: v.produtoNome, valor: v.valor, data: v.data })),
+  };
+}
+
 const randomCode = () => (Date.now().toString(36) + Math.random().toString(36).slice(2, 6)).toUpperCase();
 const hoje = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 const dataLocalDe = (isoString) => { const d = new Date(isoString); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
@@ -1725,7 +1764,12 @@ function AdminView({ data, save, onSairAdmin }) {
     await save({ ...data, alunos });
     setEditandoAluno(null);
   };
-  const removerAluno = async (id) => { await save({ ...data, alunos: data.alunos.filter((a) => a.id !== id) }); };
+  const removerAluno = async (id) => {
+    const aluno = data.alunos.find((a) => a.id === id);
+    await save({ ...data, alunos: data.alunos.filter((a) => a.id !== id) });
+    await excluirDadosRelacionadosAluno(id);
+    if (aluno?.authUserId) await excluirContaAuth(aluno.authUserId);
+  };
   const resetarSenha = async (id) => {
     const aluno = data.alunos.find((a) => a.id === id);
     if (!aluno?.authUserId) { alert("Este aluno ainda não tem login real — cadastre um e-mail pra ele primeiro."); return; }
@@ -1947,6 +1991,7 @@ function AdminView({ data, save, onSairAdmin }) {
                     <Button variant="ghost" style={ghostEscuro} onClick={() => resetarSenha(a.id)}>Redefinir senha</Button>
                     <Button variant={a.ativo === false ? "gold" : "ghost"} style={a.ativo === false ? undefined : ghostEscuro} onClick={() => alternarAtivoAluno(a.id)}>{a.ativo === false ? "Reativar acesso" : "Desativar acesso"}</Button>
                     <Button variant="ghost" style={ghostEscuro} onClick={() => setEditandoAluno(a)}>Editar</Button>
+                    <Button variant="ghost" style={ghostEscuro} onClick={() => baixarJson(`dados-${normalizarTexto(a.nome).replace(/\s+/g, "-")}.json`, dadosExportaveisAluno(a, data))}>Exportar dados (LGPD)</Button>
                     <ConfirmDelete onConfirm={() => removerAluno(a.id)} />
                   </div>
                 </Card>
@@ -5140,6 +5185,7 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
                           <Button variant="ghost" onClick={() => resetarSenhaAlunoProf(a.id)} style={ghostEscuro}>Redefinir senha</Button>
                           <Button variant="ghost" onClick={() => setEditandoAluno(a)} style={ghostEscuro}>Editar</Button>
+                          <Button variant="ghost" onClick={() => baixarJson(`dados-${normalizarTexto(a.nome).replace(/\s+/g, "-")}.json`, dadosExportaveisAluno(a, data))} style={ghostEscuro}>Exportar dados (LGPD)</Button>
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                           <Button variant={a.ativo === false ? "gold" : "vermelho"} onClick={() => alternarAtivoAlunoProf(a.id)}>{a.ativo === false ? "Reativar acesso" : "Desativar acesso"}</Button>
@@ -5460,8 +5506,12 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
     await save({ ...data, alunos });
   };
   const removerAlunoProf = async (id) => {
+    const aluno = data.alunos.find((a) => a.id === id && a.professorId === prof.id);
+    if (!aluno) return;
     const alunos = data.alunos.filter((a) => !(a.id === id && a.professorId === prof.id));
     await save({ ...data, alunos });
+    await excluirDadosRelacionadosAluno(id);
+    if (aluno.authUserId) await excluirContaAuth(aluno.authUserId);
   };
   const alternarPresenca = async (alunoId, presente) => {
     if (!sessaoAtiva) return;
@@ -5739,6 +5789,7 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
                           <Button variant="ghost" style={ghostDark} onClick={() => resetarSenhaAlunoProf(a.id)}>Redefinir senha</Button>
                           <Button variant="ghost" style={ghostDark} onClick={() => setEditandoAluno(a)}>Editar</Button>
+                          <Button variant="ghost" style={ghostDark} onClick={() => baixarJson(`dados-${normalizarTexto(a.nome).replace(/\s+/g, "-")}.json`, dadosExportaveisAluno(a, data))}>Exportar dados (LGPD)</Button>
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                           <Button variant={a.ativo === false ? "gold" : "vermelho"} onClick={() => alternarAtivoAlunoProf(a.id)}>{a.ativo === false ? "Reativar acesso" : "Desativar acesso"}</Button>
@@ -6467,6 +6518,17 @@ function AlunoDashboard({ data, save, aluno, onSair }) {
             </div>
             {msgSenha && <div style={{ marginTop: 6, fontSize: 12, fontWeight: 600, color: msgSenha.includes("sucesso") ? "#4ADE80" : "#FF8A80" }}>{msgSenha}</div>}
             <div style={{ marginTop: 8 }}><ConfirmButton dark onConfirm={alterarSenha}>Salvar nova senha</ConfirmButton></div>
+          </Card>
+
+          <Card style={{ marginBottom: 14, padding: 14, background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}>
+            <div style={{ fontWeight: 700, fontSize: 12.5, color: "#F5F3EC", textTransform: "uppercase", marginBottom: 8 }}>Meus dados (LGPD)</div>
+            <p style={{ fontSize: 12, color: "#9B9891", margin: "0 0 10px" }}>Baixe uma cópia de todos os seus dados guardados pelo sistema, ou peça a exclusão da sua conta e do seu histórico.</p>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <Button variant="ghost" style={{ color: "#FFFFFF", border: "1px solid rgba(255,255,255,0.2)" }} onClick={() => baixarJson(`meus-dados-${normalizarTexto(aluno.nome).replace(/\s+/g, "-")}.json`, dadosExportaveisAluno(aluno, data))}>Baixar meus dados</Button>
+              {data.academia.whatsapp && (
+                <a href={data.academia.whatsapp} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", fontSize: 12.5, fontWeight: 600, color: "#FF8A80" }}>Solicitar exclusão da minha conta</a>
+              )}
+            </div>
           </Card>
 
           {(data.academia.termoPadrao || data.academia.termoPdf) && (

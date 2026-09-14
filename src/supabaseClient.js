@@ -107,6 +107,11 @@ export const pg = {
       method: "DELETE",
       headers: { Prefer: "return=minimal" },
     }),
+  deleteWhere: (table, coluna, valor) =>
+    pgFetch(`/${table}?${coluna}=eq.${valor}`, {
+      method: "DELETE",
+      headers: { Prefer: "return=minimal" },
+    }),
 };
 
 export async function uploadArquivo(bucket, file, onProgress) {
