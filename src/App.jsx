@@ -1750,7 +1750,7 @@ function AdminView({ data, save, onSairAdmin }) {
       alert(e.message);
       return;
     }
-    const p = { id: uid(), tipo: "professor", ...form, ...authPatch };
+    const p = { id: uid(), tipo: "professor", primeiroAcesso: true, termoAceito: false, termoAceitoEm: null, ...form, ...authPatch };
     await save({ ...data, professores: [...data.professores, p] });
     setNovoProf(false);
   };
@@ -1988,6 +1988,7 @@ function AdminView({ data, save, onSairAdmin }) {
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   {p.ativo === false && <Tag ok={false}>Acesso desativado</Tag>}
+                  {(data.academia.termoPadrao || data.academia.termoPdf) && <Tag ok={p.termoAceito}>{p.termoAceito ? "Termo OK" : "Termo pendente"}</Tag>}
                   {senhaGeradaProf?.id === p.id && <span style={{ fontSize: 11.5, fontWeight: 700, color: "#6FCF7A" }}>Nova senha: {senhaGeradaProf.senha}</span>}
                   <Button variant="ghost" onClick={() => resetarSenhaProf(p.id)} style={ghostEscuro}>Redefinir senha</Button>
                   <Button variant={p.ativo === false ? "gold" : "ghost"} style={p.ativo === false ? undefined : ghostEscuro} onClick={() => alternarAtivoProf(p.id)}>{p.ativo === false ? "Reativar acesso" : "Desativar acesso"}</Button>
@@ -5323,6 +5324,7 @@ function ProfessorView({ data, save, activeProfId }) {
   }, [prof?.id, prof?.ativo]);
 
   if (!prof || prof.ativo === false) return <ProfessorLogin data={data} />;
+  if (prof.primeiroAcesso && (data.academia.termoPadrao || data.academia.termoPdf)) return <PrimeiroAcessoTermoProfessor data={data} save={save} prof={prof} />;
   return <ProfessorDashboard data={data} save={save} prof={prof} onSair={handleSair} />;
 }
 
@@ -5999,6 +6001,40 @@ function PrimeiroAcessoTermo({ data, save, aluno }) {
           <SignaturePad onChange={setAssinatura} />
         </Field>
         <p style={{ fontSize: 11, color: "#8A8574", margin: "6px 0 12px" }}>Sua assinatura fica registrada com o termo e disponível para o seu professor.</p>
+        <Button icon={Check} variant="gold" disabled={!aceito || !assinatura} onClick={confirmar}>Continuar</Button>
+      </Card>
+    </div>
+  );
+}
+
+function PrimeiroAcessoTermoProfessor({ data, save, prof }) {
+  const [aceito, setAceito] = useState(false);
+  const [assinatura, setAssinatura] = useState(null);
+  const confirmar = async () => {
+    if (!aceito || !assinatura) return;
+    const professores = data.professores.map((p) => (p.id === prof.id ? { ...p, termoAceito: true, termoAceitoEm: new Date().toISOString(), primeiroAcesso: false, assinaturaTermo: assinatura } : p));
+    await save({ ...data, professores });
+  };
+  return (
+    <div style={{ maxWidth: 480, margin: "20px auto", padding: "0 20px", boxSizing: "border-box" }}>
+      <SectionTitle sub={`Bem-vindo(a), ${prof.nome}! Antes de continuar, leia o termo abaixo.`}>Primeiro acesso</SectionTitle>
+      <Card>
+        {data.academia.termoPdf && (
+          <a href={data.academia.termoPdf} target="_blank" rel="noreferrer" onClick={(e) => { e.preventDefault(); abrirPdfDataUrl(data.academia.termoPdf); }} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "#12213B", marginBottom: 10 }}>
+            📄 Abrir termo em PDF ({data.academia.termoPdfNome || "termo.pdf"})
+          </a>
+        )}
+        {data.academia.termoPadrao && (
+          <div style={{ whiteSpace: "pre-wrap", fontSize: 12.5, color: "#5A5648", maxHeight: 180, overflowY: "auto", border: "1px solid #E7E2D6", borderRadius: 8, padding: 10, marginBottom: 10 }}>{data.academia.termoPadrao}</div>
+        )}
+        <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13, marginBottom: 12 }}>
+          <input type="checkbox" checked={aceito} onChange={(e) => setAceito(e.target.checked)} style={{ marginTop: 3 }} />
+          Li o termo de consentimento (texto e/ou PDF) e estou ciente das condições.
+        </label>
+        <Field label="Assine com o dedo abaixo">
+          <SignaturePad onChange={setAssinatura} />
+        </Field>
+        <p style={{ fontSize: 11, color: "#8A8574", margin: "6px 0 12px" }}>Sua assinatura fica registrada com o termo.</p>
         <Button icon={Check} variant="gold" disabled={!aceito || !assinatura} onClick={confirmar}>Continuar</Button>
       </Card>
     </div>
