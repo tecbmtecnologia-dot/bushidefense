@@ -358,6 +358,34 @@ function RecadoMestreAluno({ recado, aluno, nomeProfessor, onVisto }) {
   );
 }
 
+function FotosTreinoAluno({ fotos, nomeProfessor }) {
+  const [aberta, setAberta] = useState(null);
+  if (!fotos || fotos.length === 0) return null;
+  return (
+    <div style={{ background: "linear-gradient(165deg, #1A1D24 0%, #0D0F13 100%)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: 16, marginBottom: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+        <span style={{ fontSize: 20 }}>📸</span>
+        <div>
+          <div style={{ fontFamily: "Oswald", fontWeight: 700, fontSize: 14, color: "#FFFFFF" }}>Foto do treino</div>
+          <div style={{ fontSize: 11.5, color: "#9B9891" }}>{nomeProfessor ? `De: ${nomeProfessor}` : ""} · fica visível por alguns dias</div>
+        </div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(86px, 1fr))", gap: 8 }}>
+        {fotos.map((f) => (
+          <button key={f.id} onClick={() => setAberta(f)} style={{ padding: 0, border: "none", background: "none", cursor: "pointer" }}>
+            <img src={f.fotoUrl} alt="" style={{ width: "100%", aspectRatio: "1", objectFit: "cover", borderRadius: 8 }} />
+          </button>
+        ))}
+      </div>
+      {aberta && (
+        <div onClick={() => setAberta(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 20 }}>
+          <img src={aberta.fotoUrl} alt="" style={{ maxWidth: "100%", maxHeight: "100%", borderRadius: 8 }} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function BannerAniversario({ nome, mensagemPersonalizada }) {
   const primeiroNome = nome.split(" ")[0];
   const mensagem = (mensagemPersonalizada || "Toda a equipe do QG deseja um ótimo dia. 🥋").split("{nome}").join(primeiroNome);
@@ -3640,6 +3668,123 @@ function RecadoMestreProfessor({ data, prof, dark = true }) {
   );
 }
 
+function FotoTreinoProfessor({ prof, dark = true }) {
+  dark = dark && !useDesktopLight();
+  const [fotos, setFotos] = useState([]);
+  const [arquivo, setArquivo] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [enviando, setEnviando] = useState(false);
+  const [progresso, setProgresso] = useState(0);
+  const [msg, setMsg] = useState("");
+  const [confirmando, setConfirmando] = useState(false);
+  const inputCameraRef = useRef(null);
+  const inputGaleriaRef = useRef(null);
+
+  useEffect(() => {
+    let cancelado = false;
+    (async () => {
+      try {
+        const linhas = await pg.select("fotos_treino", `professor_id=eq.${prof.id}&order=criado_em.desc`);
+        if (!cancelado) setFotos((linhas || []).map((f) => ({ id: f.id, fotoUrl: f.foto_url, criadoEm: f.criado_em })));
+      } catch (_) {}
+    })();
+    return () => { cancelado = true; };
+  }, [prof.id]);
+
+  const onArquivo = (e) => {
+    const f = e.target.files?.[0];
+    if (f) { setArquivo(f); setPreview(URL.createObjectURL(f)); setMsg(""); }
+    e.target.value = "";
+  };
+
+  const cancelarEscolha = () => { setArquivo(null); setPreview(null); setConfirmando(false); };
+
+  const enviar = async () => {
+    if (!arquivo) return;
+    setEnviando(true);
+    setConfirmando(false);
+    setMsg("");
+    try {
+      const url = await uploadArquivo("fotos-treino", arquivo, setProgresso);
+      const criadoEm = new Date().toISOString();
+      const id = uid();
+      await pg.upsert("fotos_treino", [{ id, professor_id: prof.id, foto_url: url, criado_em: criadoEm }]);
+      notificarPush("Foto do treino 📸", `${prof.nome} postou uma foto do treino de hoje.`, { professorAlunosId: prof.id });
+      setFotos((prev) => [{ id, fotoUrl: url, criadoEm }, ...prev]);
+      setMsg("Foto publicada! Fica visível pros seus alunos por 5 dias.");
+      cancelarEscolha();
+    } catch (e) {
+      setMsg("Não foi possível enviar: " + (e?.message || "tenta de novo."));
+    }
+    setEnviando(false);
+    setProgresso(0);
+  };
+
+  const remover = async (foto) => {
+    await removerArquivo("fotos-treino", foto.fotoUrl);
+    await pg.deleteIn("fotos_treino", [foto.id]);
+    setFotos((prev) => prev.filter((f) => f.id !== foto.id));
+  };
+
+  const diasRestantes = (criadoEm) => {
+    const dias = 5 - Math.floor((Date.now() - new Date(criadoEm).getTime()) / 86400000);
+    return dias <= 0 ? "some hoje" : `some em ${dias} dia(s)`;
+  };
+
+  const corTexto = dark ? "#F5F3EC" : undefined;
+  const corMuted = dark ? "#C9C4B4" : "#5A5648";
+
+  return (
+    <Card style={{ marginBottom: 16, ...(dark ? { background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" } : {}) }}>
+      <div style={dark ? { ...blockTitleStyle, color: corTexto } : blockTitleStyle}>📸 Foto do treino</div>
+      <p style={{ fontSize: 12.5, color: corMuted, marginTop: 0 }}>
+        Tire (ou escolha) uma foto do treino de hoje — todos os seus alunos recebem a notificação, e ela some sozinha depois de 5 dias.
+      </p>
+      {arquivo ? (
+        <div>
+          <img src={preview} alt="" style={{ width: "100%", maxHeight: 220, objectFit: "cover", borderRadius: 8, marginBottom: 10 }} />
+          {enviando ? (
+            <div style={{ fontSize: 13, color: corMuted }}>Enviando... {progresso}%</div>
+          ) : confirmando ? (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 12.5, color: corMuted, fontWeight: 600 }}>Publicar essa foto?</span>
+              <Button variant="vermelho" onClick={enviar}>Sim, publicar</Button>
+              <Button variant="ghost" style={dark ? { color: "#FFFFFF", border: "1px solid rgba(255,255,255,0.2)" } : undefined} onClick={() => setConfirmando(false)}>Não</Button>
+            </span>
+          ) : (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <Button variant="vermelho" onClick={() => setConfirmando(true)}>Publicar foto</Button>
+              <Button variant="ghost" style={dark ? { color: "#FFFFFF", border: "1px solid rgba(255,255,255,0.2)" } : undefined} onClick={cancelarEscolha}>Trocar foto</Button>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <Button variant="vermelho" icon={Camera} onClick={() => inputCameraRef.current?.click()}>Tirar foto agora</Button>
+          <Button variant="ghost" style={dark ? { color: "#FFFFFF", border: "1px solid rgba(255,255,255,0.2)" } : undefined} onClick={() => inputGaleriaRef.current?.click()}>🖼️ Escolher da galeria</Button>
+        </div>
+      )}
+      <input ref={inputCameraRef} type="file" accept="image/*" capture="environment" hidden onChange={onArquivo} />
+      <input ref={inputGaleriaRef} type="file" accept="image/*" hidden onChange={onArquivo} />
+      {msg && <div style={{ marginTop: 8, fontSize: 12.5, fontWeight: 600, color: msg.includes("publicada") ? (dark ? "#4ADE80" : "#1E7A34") : (dark ? "#FF8A80" : "#B3261E") }}>{msg}</div>}
+
+      {fotos.length > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(84px, 1fr))", gap: 8, marginTop: 14 }}>
+          {fotos.map((f) => (
+            <div key={f.id} style={{ position: "relative" }}>
+              <img src={f.fotoUrl} alt="" style={{ width: "100%", aspectRatio: "1", objectFit: "cover", borderRadius: 8 }} />
+              <div style={{ position: "absolute", bottom: 2, left: 2, right: 2, fontSize: 9, fontWeight: 700, color: "#fff", background: "rgba(0,0,0,0.55)", borderRadius: 4, padding: "1px 4px", textAlign: "center" }}>{diasRestantes(f.criadoEm)}</div>
+              <button onClick={() => remover(f)} style={{ position: "absolute", top: 2, right: 2, background: "rgba(0,0,0,0.55)", border: "none", borderRadius: "50%", width: 20, height: 20, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                <X size={12} color="#fff" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function AlunosPertoDeGraduar({ data, prof, dark = true }) {
   dark = dark && !useDesktopLight();
   const LIMITE_AULAS = 5;
@@ -5084,6 +5229,8 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
 
           <RecadoMestreProfessor data={data} prof={prof} dark />
 
+          <FotoTreinoProfessor prof={prof} dark />
+
           <AlunosPorFaixaChart alunos={meusAlunos} faixas={data.faixas} titulo="Meus alunos por faixa" dark />
 
           <AlunosPertoDeGraduar data={data} prof={prof} dark />
@@ -5668,6 +5815,8 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
 
           <RecadoMestreProfessor data={data} prof={prof} dark={true} />
 
+          <FotoTreinoProfessor prof={prof} dark={true} />
+
           <AlunosPorFaixaChart alunos={data.alunos.filter((a) => a.professorId === prof.id)} faixas={data.faixas} titulo="Meus alunos por faixa" dark />
 
           <AlunosPertoDeGraduar data={data} prof={prof} />
@@ -6145,6 +6294,7 @@ function AlunoDashboard({ data, save, aluno, onSair }) {
   const [confirmarSenha, setConfirmarSenha] = useState("");
   const [msgSenha, setMsgSenha] = useState("");
   const [recadosPendentes, setRecadosPendentes] = useState([]);
+  const [fotosTreino, setFotosTreino] = useState([]);
 
   useEffect(() => {
     if (!aluno.professorId) return;
@@ -6158,6 +6308,19 @@ function AlunoDashboard({ data, save, aluno, onSair }) {
           .filter((r) => !idsVistos.has(r.id))
           .map((r) => ({ id: r.id, videoUrl: r.video_url, destinatariosTotal: r.destinatarios_total }));
         if (!cancelado) setRecadosPendentes(naoVistos);
+      } catch (_) {}
+    })();
+    return () => { cancelado = true; };
+  }, [aluno.id, aluno.professorId]);
+
+  useEffect(() => {
+    if (!aluno.professorId) return;
+    let cancelado = false;
+    (async () => {
+      try {
+        const limite = new Date(Date.now() - 5 * 86400000).toISOString();
+        const linhas = await pg.select("fotos_treino", `professor_id=eq.${aluno.professorId}&criado_em=gte.${limite}&order=criado_em.desc`);
+        if (!cancelado) setFotosTreino((linhas || []).map((f) => ({ id: f.id, fotoUrl: f.foto_url, criadoEm: f.criado_em })));
       } catch (_) {}
     })();
     return () => { cancelado = true; };
@@ -6311,6 +6474,7 @@ function AlunoDashboard({ data, save, aluno, onSair }) {
           {recadosPendentes.length > 0 && (
             <RecadoMestreAluno recado={recadosPendentes[0]} aluno={aluno} nomeProfessor={nomeProfessorRecado} onVisto={marcarRecadoVisto} />
           )}
+          <FotosTreinoAluno fotos={fotosTreino} nomeProfessor={nomeProfessorRecado} />
           {ehAniversarioHoje(aluno.dataNascimento) && <BannerAniversario nome={aluno.nome} mensagemPersonalizada={data.academia.mensagemAniversario} />}
           <div style={{ background: "linear-gradient(165deg, #1A1D24 0%, #0D0F13 100%)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: "18px 20px 20px", marginBottom: 12 }}>
             <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 4 }}>
