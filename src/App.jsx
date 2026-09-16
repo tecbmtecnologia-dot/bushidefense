@@ -188,11 +188,11 @@ function statusPagamento(aluno, planos) {
   return { emDia: vencimento >= hoje(), vencimento, plano };
 }
 
-async function darBaixaEm(data, save, alunoId, valorProdutos = 0) {
+async function darBaixaEm(data, save, alunoId, valorProdutos = 0, valorPagoCustom = null) {
   const alunos = data.alunos.map((a) => {
     if (a.id !== alunoId) return a;
     const plano = data.planos.find((p) => p.id === a.planoId);
-    const valorMensalidade = plano?.valor || 0;
+    const valorMensalidade = valorPagoCustom != null ? Number(valorPagoCustom) || 0 : (plano?.valor || 0);
     const extra = Number(valorProdutos) || 0;
     const pagamento = { id: uid(), data: hoje(), valor: valorMensalidade + extra, valorMensalidade, valorProdutos: extra };
     const pagamentos = [...(a.pagamentos || []), pagamento];
@@ -969,12 +969,23 @@ function ConfirmButton({ onConfirm, children, icon = Check, variant = "primary",
   );
 }
 
-function DarBaixaControle({ mensalidade, onConfirmar, dark = true }) {
+function DarBaixaControle({ plano, mensalidade, onConfirmar, dark = true }) {
   const light = useDesktopLight();
   const escuro = dark && !light;
   const [aberto, setAberto] = useState(false);
   const [produtos, setProdutos] = useState("");
-  const total = (Number(mensalidade) || 0) + (Number(produtos) || 0);
+  const valorHora = Number(plano?.valorHora) || 0;
+  const valorPadrao = mensalidade != null ? Number(mensalidade) || 0 : Number(plano?.valor) || 0;
+  const [horas, setHoras] = useState("");
+  const [valorPago, setValorPago] = useState(valorPadrao ? String(valorPadrao) : "");
+  const total = (Number(valorPago) || 0) + (Number(produtos) || 0);
+  const labelColor = escuro ? "#C9C4B4" : (light ? LIGHT.muted : undefined);
+  const inputBase = escuro ? inputStyleDark : inputStyle;
+
+  const aplicarHoras = (v) => {
+    setHoras(v);
+    if (valorHora > 0 && v !== "") setValorPago(String((Number(v) || 0) * valorHora));
+  };
 
   if (!aberto) {
     return <Button variant="gold" onClick={() => setAberto(true)}>Dar baixa</Button>;
@@ -982,14 +993,22 @@ function DarBaixaControle({ mensalidade, onConfirmar, dark = true }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 220 }}>
-      <Field label="Produtos comprados junto (R$, opcional)" labelColor={escuro ? "#C9C4B4" : (light ? LIGHT.muted : undefined)}>
-        <input type="number" min="0" step="0.01" style={escuro ? inputStyleDark : inputStyle} value={produtos} onChange={(e) => setProdutos(e.target.value)} placeholder="0,00" />
+      {valorHora > 0 && (
+        <Field label={`Quantidade de horas-aula (R$ ${valorHora.toFixed(2)}/hora)`} labelColor={labelColor}>
+          <input type="number" min="0" step="0.5" style={inputBase} value={horas} onChange={(e) => aplicarHoras(e.target.value)} placeholder="0" />
+        </Field>
+      )}
+      <Field label="Valor total pago (R$)" labelColor={labelColor}>
+        <input type="number" min="0" step="0.01" style={inputBase} value={valorPago} onChange={(e) => setValorPago(e.target.value)} placeholder="0,00" />
+      </Field>
+      <Field label="Produtos comprados junto (R$, opcional)" labelColor={labelColor}>
+        <input type="number" min="0" step="0.01" style={inputBase} value={produtos} onChange={(e) => setProdutos(e.target.value)} placeholder="0,00" />
       </Field>
       <div style={{ fontSize: 12.5, color: escuro ? "#9B9891" : (light ? LIGHT.muted : "#5A5648") }}>
-        Mensalidade R$ {(Number(mensalidade) || 0).toFixed(2)}{Number(produtos) > 0 ? ` + produtos R$ ${Number(produtos).toFixed(2)}` : ""} = <strong style={{ color: "#C9A227" }}>Total R$ {total.toFixed(2)}</strong>
+        Valor pago R$ {(Number(valorPago) || 0).toFixed(2)}{Number(produtos) > 0 ? ` + produtos R$ ${Number(produtos).toFixed(2)}` : ""} = <strong style={{ color: "#C9A227" }}>Total R$ {total.toFixed(2)}</strong>
       </div>
       <div style={{ display: "flex", gap: 8 }}>
-        <ConfirmButton dark={dark} onConfirm={() => { onConfirmar(Number(produtos) || 0); setAberto(false); setProdutos(""); }}>Confirmar pagamento</ConfirmButton>
+        <ConfirmButton dark={dark} onConfirm={() => { onConfirmar(Number(produtos) || 0, Number(valorPago) || 0); setAberto(false); setProdutos(""); }}>Confirmar pagamento</ConfirmButton>
         <Button variant="ghost" style={escuro ? { color: "#FFFFFF", border: "1px solid rgba(255,255,255,0.2)" } : ghostEscuroFallback(light)} onClick={() => { setAberto(false); setProdutos(""); }}>Cancelar</Button>
       </div>
     </div>
@@ -2207,7 +2226,7 @@ function PersonForm({ tipo, initial, planos, faixas, professores, unidades, turm
             <Field label="Peso (kg)"><input type="number" min="0" step="0.1" style={inputStyle} value={peso} onChange={(e) => setPeso(e.target.value)} /></Field>
             <Field label="Plano">
               <select style={inputStyle} value={planoId} onChange={(e) => setPlanoId(e.target.value)}>
-                {(planos || []).filter((p) => !p.unidadeId || p.unidadeId === unidadeId).map((p) => <option key={p.id} value={p.id}>{p.nome} — R$ {p.valor}</option>)}
+                {(planos || []).filter((p) => !p.unidadeId || p.unidadeId === unidadeId).map((p) => <option key={p.id} value={p.id}>{p.nome} — R$ {p.valor}{p.valorHora ? ` (hora-aula R$ ${p.valorHora})` : ""}</option>)}
               </select>
               <p style={{ fontSize: 11, color: "#8A8574", marginTop: 4 }}>Mostrando planos da unidade selecionada abaixo, mais os que valem pra todas.</p>
             </Field>
@@ -2419,14 +2438,16 @@ function GraduacaoAdmin({ data, save }) {
 function PlanoForm({ unidades, onSave, onCancel }) {
   const [nome, setNome] = useState("");
   const [valor, setValor] = useState("");
+  const [valorHora, setValorHora] = useState("");
   const [periodicidade, setPeriodicidade] = useState("mensal");
   const [unidadeId, setUnidadeId] = useState("");
-  const submit = () => { if (!nome.trim()) return; onSave({ nome, valor: Number(valor) || 0, periodicidade, unidadeId }); };
+  const submit = () => { if (!nome.trim()) return; onSave({ nome, valor: Number(valor) || 0, valorHora: Number(valorHora) || 0, periodicidade, unidadeId }); };
   return (
     <Card style={{ marginBottom: 12 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr 1fr 1fr 1.2fr", gap: 10 }}>
         <Field label="Nome do plano"><input style={inputStyle} value={nome} onChange={(e) => setNome(e.target.value)} /></Field>
         <Field label="Valor (R$)"><input type="number" min="0" style={inputStyle} value={valor} onChange={(e) => setValor(e.target.value)} /></Field>
+        <Field label="Valor da hora-aula (R$)"><input type="number" min="0" step="0.01" style={inputStyle} value={valorHora} onChange={(e) => setValorHora(e.target.value)} placeholder="ex: personal" /></Field>
         <Field label="Periodicidade">
           <select style={inputStyle} value={periodicidade} onChange={(e) => setPeriodicidade(e.target.value)}>
             <option value="mensal">Mensal</option><option value="trimestral">Trimestral</option><option value="semestral">Semestral</option><option value="anual">Anual</option>
@@ -2439,6 +2460,7 @@ function PlanoForm({ unidades, onSave, onCancel }) {
           </select>
         </Field>
       </div>
+      <p style={{ fontSize: 11, color: "#8A8574", marginTop: 6 }}>Preencha "Valor da hora-aula" em planos de personal — esse valor fica disponível na hora de dar baixa no pagamento, pra calcular o total a partir das horas dadas.</p>
       <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
         <ConfirmButton onConfirm={submit}>Salvar</ConfirmButton>
         <Button variant="ghost" icon={X} onClick={onCancel}>Cancelar</Button>
@@ -2470,9 +2492,10 @@ function PlanosAdmin({ data, save }) {
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {data.planos.map((p) => (
           <Card dark key={p.id} style={{ padding: 12 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1.4fr auto", gap: 10, alignItems: "end" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr 1fr 1fr 1.4fr auto", gap: 10, alignItems: "end" }}>
               <Field label="Nome" labelColor={light ? LIGHT.muted : "#9B9891"}><input style={inputStyle} value={p.nome} onChange={(e) => atualizar(p.id, "nome", e.target.value)} /></Field>
               <Field label="Valor (R$)" labelColor={light ? LIGHT.muted : "#9B9891"}><input type="number" style={inputStyle} value={p.valor} onChange={(e) => atualizar(p.id, "valor", Number(e.target.value))} /></Field>
+              <Field label="Valor hora-aula (R$)" labelColor={light ? LIGHT.muted : "#9B9891"}><input type="number" step="0.01" style={inputStyle} value={p.valorHora || ""} onChange={(e) => atualizar(p.id, "valorHora", Number(e.target.value))} /></Field>
               <Field label="Periodicidade" labelColor={light ? LIGHT.muted : "#9B9891"}>
                 <select style={inputStyle} value={p.periodicidade} onChange={(e) => atualizar(p.id, "periodicidade", e.target.value)}>
                   <option value="mensal">Mensal</option><option value="trimestral">Trimestral</option><option value="semestral">Semestral</option><option value="anual">Anual</option>
@@ -3890,7 +3913,7 @@ function RelatorioMensalProfessor({ data, prof, dark = true }) {
 
 function FinanceiroAdmin({ data, save }) {
   const light = useDesktopLight();
-  const darBaixa = (alunoId, valorProdutos) => darBaixaEm(data, save, alunoId, valorProdutos);
+  const darBaixa = (alunoId, valorProdutos, valorPago) => darBaixaEm(data, save, alunoId, valorProdutos, valorPago);
   const desfazerBaixa = (alunoId) => desfazerBaixaEm(data, save, alunoId);
   const pendentes = data.alunos.filter((a) => !statusPagamento(a, data.planos).emDia);
   const pagamentosRecentes = data.alunos.flatMap((a) => (a.pagamentos || []).map((p) => ({ ...p, alunoId: a.id, alunoNome: a.nome }))).sort((x, y) => y.data.localeCompare(x.data)).slice(0, 40);
@@ -3915,7 +3938,7 @@ function FinanceiroAdmin({ data, save }) {
                 <div style={{ fontWeight: 600, fontSize: 14, color: light ? LIGHT.text : "#F5F3EC" }}>{a.nome}</div>
                 <div style={{ fontSize: 12, color: light ? LIGHT.muted : "#9B9891" }}>{plano?.nome || "sem plano"} · R$ {plano?.valor ?? 0} {vencimento && `· venceu em ${new Date(vencimento + "T00:00:00").toLocaleDateString("pt-BR")}`}</div>
               </div>
-              <DarBaixaControle mensalidade={plano?.valor || 0} onConfirmar={(valorProdutos) => darBaixa(a.id, valorProdutos)} />
+              <DarBaixaControle plano={plano} onConfirmar={(valorProdutos, valorPago) => darBaixa(a.id, valorProdutos, valorPago)} />
             </Card>
           );
         })}
@@ -5302,7 +5325,7 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
                         <div style={tituloSecaoStyle}>💰 Financeiro — {plano?.nome || "sem plano"}</div>
                         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                           <Tag ok={emDia}>{emDia ? "Em dia" : "Pendente"}</Tag>
-                          {!emDia && <DarBaixaControle mensalidade={plano?.valor || 0} onConfirmar={(valorProdutos) => darBaixaPagamento(a.id, valorProdutos)} />}
+                          {!emDia && <DarBaixaControle plano={plano} onConfirmar={(valorProdutos, valorPago) => darBaixaPagamento(a.id, valorProdutos, valorPago)} />}
                           {emDia && (a.pagamentos || []).length > 0 && <Button variant="ghost" onClick={() => desfazerBaixaPagamento(a.id)} style={ghostEscuro}>Desfazer baixa</Button>}
                         </div>
                       </div>
@@ -5689,7 +5712,7 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
     });
     await save({ ...data, alunos });
   };
-  const darBaixaPagamento = (alunoId, valorProdutos) => darBaixaEm(data, save, alunoId, valorProdutos);
+  const darBaixaPagamento = (alunoId, valorProdutos, valorPago) => darBaixaEm(data, save, alunoId, valorProdutos, valorPago);
   const desfazerBaixaPagamento = (alunoId) => desfazerBaixaEm(data, save, alunoId);
 
   const checkinsSessao = sessaoAtiva ? data.checkins.filter((c) => c.sessaoId === sessaoAtiva.id) : [];
@@ -5908,7 +5931,7 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
                         <div style={tituloSecaoStyle}>💰 Financeiro — {plano?.nome || "sem plano"}</div>
                         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                           <Tag ok={emDia}>{emDia ? "Em dia" : "Pendente"}</Tag>
-                          {!emDia && <DarBaixaControle mensalidade={plano?.valor || 0} onConfirmar={(valorProdutos) => darBaixaPagamento(a.id, valorProdutos)} />}
+                          {!emDia && <DarBaixaControle plano={plano} onConfirmar={(valorProdutos, valorPago) => darBaixaPagamento(a.id, valorProdutos, valorPago)} />}
                           {emDia && (a.pagamentos || []).length > 0 && <Button variant="ghost" style={ghostDark} onClick={() => desfazerBaixaPagamento(a.id)}>Desfazer baixa</Button>}
                         </div>
                       </div>
