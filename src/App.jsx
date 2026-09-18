@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useLayoutEffect, createContext, useContext } from "react";
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid } from "recharts";
 import { Shield, User, Users, QrCode, Camera, Check, Plus, Trash2, X, Award, CalendarCheck, CreditCard, ChevronRight, LogOut, Gift, RefreshCw, Download, Share, LayoutDashboard, UserCog, Calendar, Wallet, FileText, Bell, MapPin, Video, Home, ShoppingBag, Receipt, PlayCircle, Settings } from "lucide-react";
-import { loadAll, saveAll, saveAlunos, salvarInscricaoPush, notificarPush, criarContaAuth, redefinirSenhaAuth, excluirContaAuth, excluirDadosRelacionadosAluno } from "./db.js";
+import { loadAll, saveAll, saveAlunos, salvarInscricaoPush, notificarPush, criarContaAuth, redefinirSenhaAuth, atualizarEmailAuth, excluirContaAuth, excluirDadosRelacionadosAluno } from "./db.js";
 import { uploadArquivo, removerArquivo, pg, supabaseAuth, definirLembrarSessao } from "./supabaseClient.js";
 
 const VAPID_PUBLIC_KEY = "BGKxQaeijzD265ey6QLdzFQDzzl9zZMthYYjlkAFKvsr-AtpsqrcanHs96CePRDF9wU6_N0z8-IU1PFVg3IpB6I";
@@ -44,6 +44,13 @@ async function sincronizarContaAuth(registroAnterior, form) {
       return { authUserId };
     } catch (e) {
       throw new Error(`Não foi possível criar o login desta pessoa: ${e.message}`);
+    }
+  }
+  if (form.email.trim().toLowerCase() !== (registroAnterior.email || "").trim().toLowerCase()) {
+    try {
+      await atualizarEmailAuth(registroAnterior.authUserId, form.email);
+    } catch (e) {
+      throw new Error(`Cadastro salvo, mas não foi possível atualizar o e-mail de login: ${e.message}`);
     }
   }
   if (form.senha && form.senha !== registroAnterior.senha) {
@@ -1088,6 +1095,7 @@ export default function App({ modo = "admin" }) {
   const [activeAlunoId, setActiveAlunoId] = useState(null);
   // undefined = ainda não checou a sessão do Supabase Auth; null = checou e não tem sessão.
   const [authUserId, setAuthUserId] = useState(undefined);
+  const [recuperacaoSenha, setRecuperacaoSenha] = useState(false);
 
   useEffect(() => {
     // Bloqueia pinça/zoom de vez — o Safari às vezes ignora o viewport meta
@@ -1116,6 +1124,9 @@ export default function App({ modo = "admin" }) {
     let ativo = true;
     supabaseAuth.getSession().then(({ data: { session } }) => { if (ativo) setAuthUserId(session?.user?.id || null); });
     const { data: assinatura } = supabaseAuth.onAuthStateChange((_evento, session) => {
+      // Link de "esqueci minha senha" clicado: o Supabase já autentica a pessoa (sessão válida)
+      // só pra permitir trocar a senha — não deve cair direto no dashboard sem definir a senha nova.
+      if (_evento === "PASSWORD_RECOVERY") setRecuperacaoSenha(true);
       setAuthUserId(session?.user?.id || null);
     });
     return () => { ativo = false; assinatura?.subscription?.unsubscribe(); };
@@ -1192,6 +1203,8 @@ export default function App({ modo = "admin" }) {
   }
 
   if (!data) return null;
+
+  if (recuperacaoSenha) return <RedefinirSenhaRecuperacao logo={data.academia.logo} onFinalizado={() => setRecuperacaoSenha(false)} />;
 
   const emTelaLoginPreta = (role === "professor" && !activeProfId) || (role === "aluno" && !activeAlunoId);
   const alunoAtivo = role === "aluno" ? data.alunos.find((a) => a.id === activeAlunoId) : null;
@@ -6096,6 +6109,10 @@ function AlunoLogin({ data }) {
   const [lembrar, setLembrar] = useState(true);
   const [erro, setErro] = useState("");
   const [carregando, setCarregando] = useState(false);
+  const [modoRecuperar, setModoRecuperar] = useState(false);
+  const [emailRecuperar, setEmailRecuperar] = useState("");
+  const [msgRecuperar, setMsgRecuperar] = useState("");
+  const [enviandoRecuperar, setEnviandoRecuperar] = useState(false);
 
   const entrar = async () => {
     setErro("");
@@ -6110,6 +6127,33 @@ function AlunoLogin({ data }) {
     }
     setCarregando(false);
   };
+
+  const enviarRecuperacao = async () => {
+    setMsgRecuperar("");
+    if (!emailRecuperar.trim()) { setMsgRecuperar("Digite seu e-mail."); return; }
+    setEnviandoRecuperar(true);
+    const { error } = await supabaseAuth.resetPasswordForEmail(emailRecuperar.trim().toLowerCase(), {
+      redirectTo: `${window.location.origin}/alunos.html`,
+    });
+    setEnviandoRecuperar(false);
+    setMsgRecuperar(error ? `Não foi possível enviar: ${error.message}` : "Se esse e-mail tiver uma conta, enviamos um link pra você criar uma senha nova. Confira sua caixa de entrada (e o spam).");
+  };
+
+  if (modoRecuperar) {
+    return (
+      <LoginPreto logo={data.academia.logo} titulo="Área do aluno" subtitulo="Recuperar senha">
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: "#C9C4B4", textTransform: "uppercase", letterSpacing: 0.4 }}>Seu e-mail cadastrado</span>
+            <input style={inputStyleDark} value={emailRecuperar} onChange={(e) => setEmailRecuperar(e.target.value)} onKeyDown={(e) => e.key === "Enter" && enviarRecuperacao()} />
+          </label>
+          {msgRecuperar && <div style={{ fontSize: 12.5, color: msgRecuperar.startsWith("Não") ? "#FF8A80" : "#4ADE80", fontWeight: 600 }}>{msgRecuperar}</div>}
+          <Button icon={Check} variant="gold" onClick={enviarRecuperacao} disabled={enviandoRecuperar}>Enviar link de recuperação</Button>
+          <Button variant="ghost" style={ghostEscuroFallback(false)} onClick={() => { setModoRecuperar(false); setMsgRecuperar(""); }}>Voltar ao login</Button>
+        </div>
+      </LoginPreto>
+    );
+  }
 
   return (
     <LoginPreto logo={data.academia.logo} titulo="Área do aluno" subtitulo="Faça login para acessar sua área">
@@ -6127,8 +6171,56 @@ function AlunoLogin({ data }) {
         </label>
         {erro && <div style={{ fontSize: 12.5, color: "#FF8A80", fontWeight: 600 }}>{erro}</div>}
         <Button icon={Check} variant="gold" onClick={entrar} disabled={carregando}>Entrar</Button>
+        <button type="button" onClick={() => { setModoRecuperar(true); setEmailRecuperar(email); }} style={{ background: "none", border: "none", color: "#C9C4B4", fontSize: 12.5, textDecoration: "underline", cursor: "pointer", padding: 0, textAlign: "center" }}>Esqueci minha senha</button>
       </div>
-      <p style={{ fontSize: 11.5, color: "#8A8574", marginTop: 14 }}>Esqueceu a senha ou não tem acesso ainda? Peça ao professor ou à administração para redefinir/cadastrar.</p>
+      <p style={{ fontSize: 11.5, color: "#8A8574", marginTop: 14 }}>Não tem acesso ainda? Peça ao professor ou à administração para cadastrar.</p>
+    </LoginPreto>
+  );
+}
+
+/* Tela mostrada quando a pessoa chega pelo link de "esqueci minha senha" (e-mail do Supabase) —
+   o link já autentica pra permitir a troca, mas não pode cair direto no dashboard sem definir a
+   senha nova antes. Serve pra aluno, professor ou admin, já que os três usam o mesmo Supabase Auth. */
+function RedefinirSenhaRecuperacao({ logo, onFinalizado }) {
+  const [novaSenha, setNovaSenha] = useState("");
+  const [confirmar, setConfirmar] = useState("");
+  const [msg, setMsg] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const [feito, setFeito] = useState(false);
+
+  const salvar = async () => {
+    setMsg("");
+    if (novaSenha.trim().length < 6) { setMsg("A senha precisa ter pelo menos 6 caracteres."); return; }
+    if (novaSenha.trim() !== confirmar.trim()) { setMsg("As senhas não coincidem."); return; }
+    setSalvando(true);
+    const { error } = await supabaseAuth.updateUser({ password: novaSenha.trim() });
+    setSalvando(false);
+    if (error) { setMsg(`Não foi possível salvar: ${error.message}`); return; }
+    setFeito(true);
+    await supabaseAuth.signOut();
+  };
+
+  return (
+    <LoginPreto logo={logo} titulo="Nova senha" subtitulo={feito ? undefined : "Defina sua nova senha de acesso"}>
+      {feito ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ fontSize: 13, color: "#4ADE80", fontWeight: 600 }}>Senha alterada com sucesso! Faça login novamente com a senha nova.</div>
+          <Button icon={Check} variant="gold" onClick={onFinalizado}>Ir para o login</Button>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: "#C9C4B4", textTransform: "uppercase", letterSpacing: 0.4 }}>Nova senha</span>
+            <input type="password" style={inputStyleDark} value={novaSenha} onChange={(e) => setNovaSenha(e.target.value)} />
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: "#C9C4B4", textTransform: "uppercase", letterSpacing: 0.4 }}>Confirmar nova senha</span>
+            <input type="password" style={inputStyleDark} value={confirmar} onChange={(e) => setConfirmar(e.target.value)} onKeyDown={(e) => e.key === "Enter" && salvar()} />
+          </label>
+          {msg && <div style={{ fontSize: 12.5, color: "#FF8A80", fontWeight: 600 }}>{msg}</div>}
+          <Button icon={Check} variant="gold" onClick={salvar} disabled={salvando}>Salvar nova senha</Button>
+        </div>
+      )}
     </LoginPreto>
   );
 }

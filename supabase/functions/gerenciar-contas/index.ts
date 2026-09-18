@@ -106,6 +106,23 @@ Deno.serve(async (req) => {
       });
     }
 
+    if (acao === "atualizar_email") {
+      if (!authUserId || !email) {
+        return new Response(JSON.stringify({ error: "authUserId e email são obrigatórios" }), {
+          status: 400,
+          headers: { ...cors, "Content-Type": "application/json" },
+        });
+      }
+      const { error } = await supabase.auth.admin.updateUserById(authUserId, {
+        email: String(email).trim().toLowerCase(),
+        email_confirm: true,
+      });
+      if (error) throw error;
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: { ...cors, "Content-Type": "application/json" },
+      });
+    }
+
     return new Response(JSON.stringify({ error: "ação desconhecida" }), {
       status: 400,
       headers: { ...cors, "Content-Type": "application/json" },

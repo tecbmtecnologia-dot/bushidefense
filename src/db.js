@@ -286,6 +286,13 @@ export async function redefinirSenhaAuth(authUserId, senha) {
   await chamarGerenciarContas({ acao: "redefinir_senha", authUserId, senha });
 }
 
+/* Atualiza o e-mail de login (Supabase Auth) de um aluno/professor já migrado — necessário
+   sempre que o e-mail do cadastro é corrigido/editado, senão a conta de login fica presa no
+   e-mail antigo pra sempre e nenhuma redefinição de senha resolve. */
+export async function atualizarEmailAuth(authUserId, email) {
+  await chamarGerenciarContas({ acao: "atualizar_email", authUserId, email });
+}
+
 /* Exclui de vez a conta de login (Supabase Auth) de um aluno/professor — parte do direito de
    exclusão da LGPD. Não falha o fluxo de exclusão do cadastro se a conta já não existir mais. */
 export async function excluirContaAuth(authUserId) {
