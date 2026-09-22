@@ -16,7 +16,7 @@ const MAPS = {
     grausMax: "graus_max", tempoMinimoAnos: "tempo_minimo_anos", aulasPorGrau: "aulas_por_grau",
     categoria: "categoria", observacoes: "observacoes", ordem: "ordem",
   },
-  planos: { id: "id", nome: "nome", valor: "valor", periodicidade: "periodicidade", unidadeId: "unidade_id" },
+  planos: { id: "id", nome: "nome", valor: "valor", valorHora: "valor_hora", periodicidade: "periodicidade", unidadeId: "unidade_id", professorId: "professor_id" },
   turmas: { id: "id", nome: "nome", dias: "dias", horario: "horario", horarioFim: "horario_fim", unidadeId: "unidade_id", professorId: "professor_id" },
   professores: {
     id: "id", nome: "nome", email: "email", especialidade: "especialidade",

@@ -2496,7 +2496,7 @@ function PlanosAdmin({ data, save }) {
   const adicionar = async (form) => { const p = { id: uid(), ...form }; await save({ ...data, planos: [...data.planos, p] }); setNovo(false); };
   return (
     <div>
-      <p style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#9B9891", marginTop: 0 }}>O status "em dia / pendente" de cada aluno é calculado automaticamente comparando a data do último pagamento e o dia de vencimento com a periodicidade do plano. Vincule um plano a uma unidade quando o valor for diferente por local — planos sem unidade ficam disponíveis pra todas.</p>
+      <p style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#9B9891", marginTop: 0 }}>O status "em dia / pendente" de cada aluno é calculado automaticamente comparando a data do último pagamento e o dia de vencimento com a periodicidade do plano. Vincule um plano a uma unidade quando o valor for diferente por local — planos sem unidade ficam disponíveis pra todas. Planos cadastrados aqui ficam visíveis pra todos os professores; cada professor também pode cadastrar planos só dele, na área de Financeiro.</p>
       {aviso && <div style={{ fontSize: 12.5, color: "#FF8A80", fontWeight: 600, marginBottom: 10 }}>{aviso}</div>}
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
         <Button icon={Plus} onClick={() => setNovo(true)}>Novo plano</Button>
@@ -2505,6 +2505,62 @@ function PlanosAdmin({ data, save }) {
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {data.planos.map((p) => (
           <Card dark key={p.id} style={{ padding: 12 }}>
+            <span style={{ fontSize: 10.5, fontWeight: 700, color: "#C9A227", textTransform: "uppercase" }}>
+              {p.professorId ? `Prof. ${data.professores.find((pr) => pr.id === p.professorId)?.nome || "?"}` : "Todos os professores"}
+            </span>
+            <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr 1fr 1fr 1.4fr auto", gap: 10, alignItems: "end", marginTop: 6 }}>
+              <Field label="Nome" labelColor={light ? LIGHT.muted : "#9B9891"}><input style={inputStyle} value={p.nome} onChange={(e) => atualizar(p.id, "nome", e.target.value)} /></Field>
+              <Field label="Valor (R$)" labelColor={light ? LIGHT.muted : "#9B9891"}><input type="number" style={inputStyle} value={p.valor} onChange={(e) => atualizar(p.id, "valor", Number(e.target.value))} /></Field>
+              <Field label="Valor hora-aula (R$)" labelColor={light ? LIGHT.muted : "#9B9891"}><input type="number" step="0.01" style={inputStyle} value={p.valorHora || ""} onChange={(e) => atualizar(p.id, "valorHora", Number(e.target.value))} /></Field>
+              <Field label="Periodicidade" labelColor={light ? LIGHT.muted : "#9B9891"}>
+                <select style={inputStyle} value={p.periodicidade} onChange={(e) => atualizar(p.id, "periodicidade", e.target.value)}>
+                  <option value="mensal">Mensal</option><option value="trimestral">Trimestral</option><option value="semestral">Semestral</option><option value="anual">Anual</option>
+                </select>
+              </Field>
+              <Field label="Unidade" labelColor={light ? LIGHT.muted : "#9B9891"}>
+                <select style={inputStyle} value={p.unidadeId || ""} onChange={(e) => atualizar(p.id, "unidadeId", e.target.value)}>
+                  <option value="">Todas as unidades</option>
+                  {(data.unidades || []).map((u) => <option key={u.id} value={u.id}>{u.nome}</option>)}
+                </select>
+              </Field>
+              <ConfirmDelete onConfirm={() => remover(p.id)} />
+            </div>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PlanosProfessor({ data, save, prof, dark = true }) {
+  const light = useDesktopLight();
+  const [novo, setNovo] = useState(false);
+  const [aviso, setAviso] = useState("");
+  const meusPlanos = data.planos.filter((p) => p.professorId === prof.id);
+  const atualizar = async (id, campo, valor) => { const planos = data.planos.map((p) => (p.id === id ? { ...p, [campo]: valor } : p)); await save({ ...data, planos }); };
+  const remover = async (id) => {
+    const emUso = data.alunos.some((a) => a.planoId === id);
+    if (emUso) { setAviso("Não é possível remover: há alunos usando este plano."); return; }
+    setAviso("");
+    await save({ ...data, planos: data.planos.filter((p) => p.id !== id) });
+  };
+  const adicionar = async (form) => {
+    const p = { id: uid(), ...form, professorId: prof.id };
+    await save({ ...data, planos: [...data.planos, p] });
+    setNovo(false);
+  };
+  return (
+    <div>
+      <div style={{ ...blockTitleStyle, color: dark ? "#F5F3EC" : undefined }}>💳 Meus planos</div>
+      <p style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#9B9891", marginTop: 0 }}>Planos que só você usa pra vincular aos seus alunos — outros professores não veem. Pra planos que valem pra academia toda, peça pra administração cadastrar.</p>
+      {aviso && <div style={{ fontSize: 12.5, color: "#FF8A80", fontWeight: 600, marginBottom: 10 }}>{aviso}</div>}
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+        <Button icon={Plus} onClick={() => setNovo(true)}>Novo plano</Button>
+      </div>
+      {novo && <PlanoForm unidades={data.unidades} onCancel={() => setNovo(false)} onSave={adicionar} />}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {meusPlanos.map((p) => (
+          <Card dark={dark} key={p.id} style={{ padding: 12 }}>
             <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr 1fr 1fr 1.4fr auto", gap: 10, alignItems: "end" }}>
               <Field label="Nome" labelColor={light ? LIGHT.muted : "#9B9891"}><input style={inputStyle} value={p.nome} onChange={(e) => atualizar(p.id, "nome", e.target.value)} /></Field>
               <Field label="Valor (R$)" labelColor={light ? LIGHT.muted : "#9B9891"}><input type="number" style={inputStyle} value={p.valor} onChange={(e) => atualizar(p.id, "valor", Number(e.target.value))} /></Field>
@@ -2524,6 +2580,7 @@ function PlanosAdmin({ data, save }) {
             </div>
           </Card>
         ))}
+        {meusPlanos.length === 0 && <Empty dark={dark}>Você ainda não cadastrou nenhum plano.</Empty>}
       </div>
     </div>
   );
@@ -5285,10 +5342,10 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
           {erroRelatorioAlunos && <div style={{ marginBottom: 10, fontSize: 12.5, color: "#FF8A80", fontWeight: 600 }}>{erroRelatorioAlunos}</div>}
           {!sessaoAtiva && <p style={{ fontSize: 12, color: light ? LIGHT.muted : "#9B9891", marginTop: 0 }}>Inicie a aula na aba Início para poder marcar presença manualmente.</p>}
           {novoAluno && (
-            <PersonForm tipo="aluno" planos={data.planos} faixas={data.faixas} professores={data.professores} unidades={data.unidades} turmas={data.turmas} initial={{ professorId: prof.id }} onCancel={() => setNovoAluno(false)} onSave={addAlunoProf} />
+            <PersonForm tipo="aluno" planos={data.planos.filter((p) => !p.professorId || p.professorId === prof.id)} faixas={data.faixas} professores={data.professores} unidades={data.unidades} turmas={data.turmas} initial={{ professorId: prof.id }} onCancel={() => setNovoAluno(false)} onSave={addAlunoProf} />
           )}
           {editandoAluno && (
-            <PersonForm tipo="aluno" planos={data.planos} faixas={data.faixas} professores={data.professores} unidades={data.unidades} turmas={data.turmas} initial={editandoAluno} onCancel={() => setEditandoAluno(null)} onSave={(form) => editarAlunoProf(editandoAluno.id, form)} />
+            <PersonForm tipo="aluno" planos={data.planos.filter((p) => !p.professorId || p.professorId === prof.id)} faixas={data.faixas} professores={data.professores} unidades={data.unidades} turmas={data.turmas} initial={editandoAluno} onCancel={() => setEditandoAluno(null)} onSave={(form) => editarAlunoProf(editandoAluno.id, form)} />
           )}
           <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
             <input style={{ ...inputStyle, flex: 1, minWidth: 160 }} placeholder="Buscar por nome ou apelido..." value={buscaAluno} onChange={(e) => setBuscaAluno(e.target.value)} />
@@ -5424,6 +5481,9 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
         <div>
           <RelatorioMensalProfessor data={data} prof={prof} dark />
           <PagamentosChart data={data} alunosFiltro={meusAlunos} dark />
+          <div style={{ marginTop: 20 }}>
+            <PlanosProfessor data={data} save={save} prof={prof} dark />
+          </div>
         </div>
       )}
 
@@ -5870,10 +5930,10 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
           {!sessaoAtiva && <p style={{ fontSize: 12, color: "#9B9891", marginTop: 0 }}>Inicie a aula na página Início para poder marcar presença manualmente.</p>}
           <RelatorioListaAlunosProfessor data={data} prof={prof} />
           {novoAluno && (
-            <PersonForm tipo="aluno" planos={data.planos} faixas={data.faixas} professores={data.professores} unidades={data.unidades} turmas={data.turmas} initial={{ professorId: prof.id }} onCancel={() => setNovoAluno(false)} onSave={addAlunoProf} />
+            <PersonForm tipo="aluno" planos={data.planos.filter((p) => !p.professorId || p.professorId === prof.id)} faixas={data.faixas} professores={data.professores} unidades={data.unidades} turmas={data.turmas} initial={{ professorId: prof.id }} onCancel={() => setNovoAluno(false)} onSave={addAlunoProf} />
           )}
           {editandoAluno && (
-            <PersonForm tipo="aluno" planos={data.planos} faixas={data.faixas} professores={data.professores} unidades={data.unidades} turmas={data.turmas} initial={editandoAluno} onCancel={() => setEditandoAluno(null)} onSave={(form) => editarAlunoProf(editandoAluno.id, form)} />
+            <PersonForm tipo="aluno" planos={data.planos.filter((p) => !p.professorId || p.professorId === prof.id)} faixas={data.faixas} professores={data.professores} unidades={data.unidades} turmas={data.turmas} initial={editandoAluno} onCancel={() => setEditandoAluno(null)} onSave={(form) => editarAlunoProf(editandoAluno.id, form)} />
           )}
           <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
             <input style={{ ...inputStyleDark, flex: 1, minWidth: 160 }} placeholder="Buscar por nome ou apelido..." value={buscaAluno} onChange={(e) => setBuscaAluno(e.target.value)} />
@@ -6041,6 +6101,9 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
           <div style={{ fontSize: 12.5, color: "#9B9891", marginBottom: 16 }}>Só dos seus alunos vinculados</div>
           <RelatorioMensalProfessor data={data} prof={prof} />
           <PagamentosChart data={data} alunosFiltro={data.alunos.filter((a) => a.professorId === prof.id)} dark />
+          <div style={{ marginTop: 20 }}>
+            <PlanosProfessor data={data} save={save} prof={prof} dark />
+          </div>
         </div>
 
         {/* PÁGINA 5 — RELATÓRIOS */}

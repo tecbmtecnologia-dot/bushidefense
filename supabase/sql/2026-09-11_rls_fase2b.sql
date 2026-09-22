@@ -88,12 +88,14 @@ create policy academia_delete_admin on academia for delete using (auth_is_admin(
 
 -- ============================================================
 -- Referência compartilhada — leitura pra qualquer logado, escrita só admin
+-- ("planos" saiu daqui em 2026-09-21: cada professor passou a ter os
+-- próprios planos, ver 2026-09-21_planos_por_professor.sql)
 -- ============================================================
 do $$
 declare
   tabela text;
 begin
-  foreach tabela in array array['faixas', 'planos', 'unidades'] loop
+  foreach tabela in array array['faixas', 'unidades'] loop
     execute format('alter table %I enable row level security', tabela);
     execute format('drop policy if exists %I on %I', 'allow all - ' || tabela, tabela);
     execute format('drop policy if exists %I_select_auth on %I', tabela, tabela);
