@@ -11,6 +11,7 @@ export default defineConfig({
         alunos: resolve(__dirname, "alunos.html"),
         professores: resolve(__dirname, "professores.html"),
         privacidade: resolve(__dirname, "privacidade.html"),
+        cronometro: resolve(__dirname, "cronometro.html"),
       },
     },
   },

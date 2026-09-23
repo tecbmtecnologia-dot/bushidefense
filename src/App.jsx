@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useLayoutEffect, createContext, useContext } from "react";
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid } from "recharts";
-import { Shield, User, Users, QrCode, Camera, Check, Plus, Trash2, X, Award, CalendarCheck, CreditCard, ChevronRight, LogOut, Gift, RefreshCw, Download, Share, LayoutDashboard, UserCog, Calendar, Wallet, FileText, Bell, MapPin, Video, Home, ShoppingBag, Receipt, PlayCircle, Settings } from "lucide-react";
+import { Shield, User, Users, QrCode, Camera, Check, Plus, Trash2, X, Award, CalendarCheck, CreditCard, ChevronRight, LogOut, Gift, RefreshCw, Download, Share, LayoutDashboard, UserCog, Calendar, Wallet, FileText, Bell, MapPin, Video, Home, ShoppingBag, Receipt, PlayCircle, Settings, Timer, ExternalLink } from "lucide-react";
 import { loadAll, saveAll, saveAlunos, salvarInscricaoPush, notificarPush, criarContaAuth, redefinirSenhaAuth, atualizarEmailAuth, excluirContaAuth, excluirDadosRelacionadosAluno } from "./db.js";
 import { uploadArquivo, removerArquivo, pg, supabaseAuth, definirLembrarSessao } from "./supabaseClient.js";
 
@@ -817,7 +817,7 @@ function GradeHorarios({ turmas }) {
                 <div style={{ fontWeight: 700, fontSize: 12.5, color: "#C9A227", marginBottom: 4 }}>{dia}</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                   {turmas.filter((t) => (t.dias || []).includes(dia)).sort((a, b) => (a.horario || "").localeCompare(b.horario || "")).map((t) => (
-                    <div key={t.id} style={{ fontSize: 12.5, color: "#5A5648", display: "flex", justifyContent: "space-between", background: "#FBFAF7", borderRadius: 6, padding: "6px 10px", border: "1px solid #E7E2D6" }}>
+                    <div key={t.id} style={{ fontSize: 12.5, color: "#E5E1D4", display: "flex", justifyContent: "space-between", background: "rgba(255,255,255,0.05)", borderRadius: 6, padding: "6px 10px", border: "1px solid rgba(255,255,255,0.1)" }}>
                       <span>{t.nome}</span><span>{t.horario}{t.horarioFim ? ` - ${t.horarioFim}` : ""}</span>
                     </div>
                   ))}
@@ -925,12 +925,12 @@ function VideosAluno({ videos }) {
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {lista.map((v) => (
-                <button key={v.id} onClick={() => setSelecionadoId(v.id)} style={{ textAlign: "left", background: "#FBFAF7", border: "1px solid #E7E2D6", borderRadius: 8, padding: "10px 12px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <button key={v.id} onClick={() => setSelecionadoId(v.id)} style={{ textAlign: "left", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, padding: "10px 12px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                   <div>
-                    <div style={{ fontWeight: 600, fontSize: 13.5, color: "#1B2027" }}>{v.titulo}</div>
-                    {v.legenda && <div style={{ fontSize: 11.5, color: "#8A8574" }}>{v.legenda}</div>}
+                    <div style={{ fontWeight: 600, fontSize: 13.5, color: "#F5F3EC" }}>{v.titulo}</div>
+                    {v.legenda && <div style={{ fontSize: 11.5, color: "#9B9891" }}>{v.legenda}</div>}
                   </div>
-                  <ChevronRight size={16} color="#8A8574" />
+                  <ChevronRight size={16} color="#9B9891" />
                 </button>
               ))}
             </div>
@@ -2448,12 +2448,12 @@ function GraduacaoAdmin({ data, save }) {
   );
 }
 
-function PlanoForm({ unidades, onSave, onCancel }) {
+function PlanoForm({ unidades, unidadeFixa, onSave, onCancel }) {
   const [nome, setNome] = useState("");
   const [valor, setValor] = useState("");
   const [valorHora, setValorHora] = useState("");
   const [periodicidade, setPeriodicidade] = useState("mensal");
-  const [unidadeId, setUnidadeId] = useState("");
+  const [unidadeId, setUnidadeId] = useState(unidadeFixa ? (unidadeFixa.id || "") : "");
   const submit = () => { if (!nome.trim()) return; onSave({ nome, valor: Number(valor) || 0, valorHora: Number(valorHora) || 0, periodicidade, unidadeId }); };
   return (
     <Card style={{ marginBottom: 12 }}>
@@ -2466,13 +2466,20 @@ function PlanoForm({ unidades, onSave, onCancel }) {
             <option value="mensal">Mensal</option><option value="trimestral">Trimestral</option><option value="semestral">Semestral</option><option value="anual">Anual</option>
           </select>
         </Field>
-        <Field label="Unidade">
-          <select style={inputStyle} value={unidadeId} onChange={(e) => setUnidadeId(e.target.value)}>
-            <option value="">Todas as unidades</option>
-            {(unidades || []).map((u) => <option key={u.id} value={u.id}>{u.nome}</option>)}
-          </select>
-        </Field>
+        {unidadeFixa !== undefined ? (
+          <Field label="Unidade">
+            <div style={{ ...inputStyle, background: "#F0EDE3", color: "#5A5648", display: "flex", alignItems: "center" }}>{unidadeFixa ? unidadeFixa.nome : "QG (padrão)"}</div>
+          </Field>
+        ) : (
+          <Field label="Unidade">
+            <select style={inputStyle} value={unidadeId} onChange={(e) => setUnidadeId(e.target.value)}>
+              <option value="">Todas as unidades</option>
+              {(unidades || []).map((u) => <option key={u.id} value={u.id}>{u.nome}</option>)}
+            </select>
+          </Field>
+        )}
       </div>
+      {unidadeFixa !== undefined && <p style={{ fontSize: 11, color: "#8A8574", marginTop: 6 }}>Você só pode cadastrar planos pra sua própria unidade. Se isso estiver errado, peça pra administração ajustar a unidade no seu cadastro.</p>}
       <p style={{ fontSize: 11, color: "#8A8574", marginTop: 6 }}>Preencha "Valor da hora-aula" em planos de personal — esse valor fica disponível na hora de dar baixa no pagamento, pra calcular o total a partir das horas dadas.</p>
       <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
         <ConfirmButton onConfirm={submit}>Salvar</ConfirmButton>
@@ -2537,6 +2544,7 @@ function PlanosProfessor({ data, save, prof, dark = true }) {
   const [novo, setNovo] = useState(false);
   const [aviso, setAviso] = useState("");
   const meusPlanos = data.planos.filter((p) => p.professorId === prof.id);
+  const unidadeDoProfessor = (data.unidades || []).find((u) => u.id === prof.unidadeId) || null;
   const atualizar = async (id, campo, valor) => { const planos = data.planos.map((p) => (p.id === id ? { ...p, [campo]: valor } : p)); await save({ ...data, planos }); };
   const remover = async (id) => {
     const emUso = data.alunos.some((a) => a.planoId === id);
@@ -2545,19 +2553,19 @@ function PlanosProfessor({ data, save, prof, dark = true }) {
     await save({ ...data, planos: data.planos.filter((p) => p.id !== id) });
   };
   const adicionar = async (form) => {
-    const p = { id: uid(), ...form, professorId: prof.id };
+    const p = { id: uid(), ...form, unidadeId: prof.unidadeId || null, professorId: prof.id };
     await save({ ...data, planos: [...data.planos, p] });
     setNovo(false);
   };
   return (
     <div>
-      <div style={{ ...blockTitleStyle, color: dark ? "#F5F3EC" : undefined }}>💳 Meus planos</div>
+      <div style={light ? blockTitleStyle : { ...blockTitleStyle, color: "#F5F3EC" }}>💳 Meus planos</div>
       <p style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#9B9891", marginTop: 0 }}>Planos que só você usa pra vincular aos seus alunos — outros professores não veem. Pra planos que valem pra academia toda, peça pra administração cadastrar.</p>
       {aviso && <div style={{ fontSize: 12.5, color: "#FF8A80", fontWeight: 600, marginBottom: 10 }}>{aviso}</div>}
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
         <Button icon={Plus} onClick={() => setNovo(true)}>Novo plano</Button>
       </div>
-      {novo && <PlanoForm unidades={data.unidades} onCancel={() => setNovo(false)} onSave={adicionar} />}
+      {novo && <PlanoForm unidadeFixa={unidadeDoProfessor} onCancel={() => setNovo(false)} onSave={adicionar} />}
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {meusPlanos.map((p) => (
           <Card dark={dark} key={p.id} style={{ padding: 12 }}>
@@ -2571,10 +2579,7 @@ function PlanosProfessor({ data, save, prof, dark = true }) {
                 </select>
               </Field>
               <Field label="Unidade" labelColor={light ? LIGHT.muted : "#9B9891"}>
-                <select style={inputStyle} value={p.unidadeId || ""} onChange={(e) => atualizar(p.id, "unidadeId", e.target.value)}>
-                  <option value="">Todas as unidades</option>
-                  {(data.unidades || []).map((u) => <option key={u.id} value={u.id}>{u.nome}</option>)}
-                </select>
+                <div style={{ ...inputStyle, background: "#F0EDE3", color: "#5A5648", display: "flex", alignItems: "center" }}>{unidadeDoProfessor ? unidadeDoProfessor.nome : "QG (padrão)"}</div>
               </Field>
               <ConfirmDelete onConfirm={() => remover(p.id)} />
             </div>
@@ -5175,6 +5180,7 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
     { id: "produtos", label: "Produtos" },
     { id: "vendas", label: "Vendas" },
     { id: "reuniao", label: "Reunião" },
+    { id: "cronometro", label: "Cronômetro", externo: "/cronometro.html" },
     { id: "perfil", label: "Meu Perfil" },
   ];
 
@@ -5200,11 +5206,11 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
     });
 
   const iconesTabs = {
-    dashboard: "📊", inicio: "🏠", alunos: "🤼", checkins: "📍", turmas: "📅", financeiro: "💰", relatorios: "📑", avisos: "🔔", videos: "🎬", produtos: "🛍️", vendas: "💵", reuniao: "🎥", perfil: "👤",
+    dashboard: "📊", inicio: "🏠", alunos: "🤼", checkins: "📍", turmas: "📅", financeiro: "💰", relatorios: "📑", avisos: "🔔", videos: "🎬", produtos: "🛍️", vendas: "💵", reuniao: "🎥", cronometro: "⏱️", perfil: "👤",
   };
   const iconesTabsClaro = {
     dashboard: LayoutDashboard, inicio: Home, alunos: Users, checkins: QrCode, turmas: Calendar, financeiro: Wallet,
-    relatorios: FileText, avisos: Bell, videos: PlayCircle, produtos: ShoppingBag, vendas: Receipt, reuniao: Video, perfil: User,
+    relatorios: FileText, avisos: Bell, videos: PlayCircle, produtos: ShoppingBag, vendas: Receipt, reuniao: Video, cronometro: Timer, perfil: User,
   };
 
   const [refFullBleed, estiloFullBleed] = useFullBleed();
@@ -5232,9 +5238,9 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
           </div>
           {tabs.map((t) => {
             const IconeClaro = iconesTabsClaro[t.id];
-            const ativo = tab === t.id;
+            const ativo = !t.externo && tab === t.id;
             return (
-              <button key={t.id} onClick={() => setTab(t.id)} className={light ? "qg-nav-item" : undefined} style={{
+              <button key={t.id} onClick={() => (t.externo ? window.open(t.externo, "_blank", "noopener") : setTab(t.id))} className={light ? "qg-nav-item" : undefined} style={{
                 display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left",
                 padding: light ? "9px 12px" : "10px 12px", borderRadius: light ? 10 : 8, border: "none", cursor: "pointer", marginBottom: 2,
                 position: "relative",
@@ -5250,6 +5256,7 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
                   <span style={{ fontSize: 15, width: 18, textAlign: "center" }}>{iconesTabs[t.id]}</span>
                 )}
                 {t.label}
+                {t.externo && <ExternalLink size={12} strokeWidth={2.2} style={{ flexShrink: 0, marginLeft: "auto", opacity: 0.6 }} />}
               </button>
             );
           })}
@@ -6582,6 +6589,7 @@ function AlunoDashboard({ data, save, aluno, onSair }) {
   };
 
   const [buscandoLocal, setBuscandoLocal] = useState(false);
+  const [checkinEmAndamento, setCheckinEmAndamento] = useState(false);
 
   const registrarCheckin = async (sessao) => {
     const jaFez = data.checkins.some((c) => c.sessaoId === sessao.id && c.alunoId === aluno.id);
@@ -6592,7 +6600,14 @@ function AlunoDashboard({ data, save, aluno, onSair }) {
     setMsg("Check-in confirmado! Bom treino 🥋");
   };
 
+  // Trava única pra tela inteira de check-in: sem ela, um toque duplo (ou um segundo toque de
+  // impaciência enquanto o pedido de localização/gravação ainda está em andamento) disparava
+  // registrarCheckin duas vezes antes do primeiro terminar — como a checagem "jaFez" lá dentro
+  // só enxerga o estado local (que ainda não tinha sido atualizado com o primeiro check-in),
+  // as duas chamadas passavam e criavam duas linhas de check-in (e incrementavam o contador de
+  // aulas duas vezes) pro mesmo treino.
   const fazerCheckinLocalizacao = () => {
+    if (checkinEmAndamento) return;
     setMsg("");
     const local = localCheckinDe(aluno, data);
 
@@ -6602,7 +6617,8 @@ function AlunoDashboard({ data, save, aluno, onSair }) {
         ? data.sessoes.find((s) => s.ativa && s.treinoId === aluno.turmaId)
         : data.sessoes.find((s) => s.ativa && s.professorId === aluno.professorId && !turmasPrivadasIds.has(s.treinoId));
       if (!sessao) { setMsg(aluno.turmaId ? "Seu professor ainda não abriu a sua aula particular agora." : "Seu professor ainda não abriu uma aula agora — peça para ele iniciar antes do check-in."); return; }
-      registrarCheckin(sessao);
+      setCheckinEmAndamento(true);
+      registrarCheckin(sessao).finally(() => setCheckinEmAndamento(false));
       return;
     }
 
@@ -6613,15 +6629,17 @@ function AlunoDashboard({ data, save, aluno, onSair }) {
     if (local.latitude == null || local.longitude == null) { setMsg(`A administração ainda não configurou a localização de ${local.nome}.`); return; }
     if (!navigator.geolocation) { setMsg("Seu navegador não suporta localização."); return; }
     setBuscandoLocal(true);
+    setCheckinEmAndamento(true);
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         setBuscandoLocal(false);
         const dist = distanciaMetros(pos.coords.latitude, pos.coords.longitude, local.latitude, local.longitude);
-        if (dist > local.raioCheckin) { setMsg(`Você está a ${Math.round(dist)}m de ${local.nome} — precisa estar a até ${local.raioCheckin}m para o check-in por localização.`); return; }
-        if (!sessao) { setMsg("O check-in libera apenas para o seu próximo treino da grade — peça para o professor iniciar a aula certa."); return; }
+        if (dist > local.raioCheckin) { setMsg(`Você está a ${Math.round(dist)}m de ${local.nome} — precisa estar a até ${local.raioCheckin}m para o check-in por localização.`); setCheckinEmAndamento(false); return; }
+        if (!sessao) { setMsg("O check-in libera apenas para o seu próximo treino da grade — peça para o professor iniciar a aula certa."); setCheckinEmAndamento(false); return; }
         await registrarCheckin(sessao);
+        setCheckinEmAndamento(false);
       },
-      () => { setBuscandoLocal(false); setMsg("Não foi possível obter sua localização. Verifique a permissão do navegador."); }
+      () => { setBuscandoLocal(false); setCheckinEmAndamento(false); setMsg("Não foi possível obter sua localização. Verifique a permissão do navegador."); }
     );
   };
 
@@ -6713,7 +6731,7 @@ function AlunoDashboard({ data, save, aluno, onSair }) {
 
           {!editando && (
             <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-              <ActionPill variant="primary" onClick={fazerCheckinLocalizacao} disabled={buscandoLocal} corFundo={faixaAtual?.cor} corTexto={faixaAtual?.texto}>{buscandoLocal ? "Localizando…" : "📍 Fazer check-in"}</ActionPill>
+              <ActionPill variant="primary" onClick={fazerCheckinLocalizacao} disabled={checkinEmAndamento} corFundo={faixaAtual?.cor} corTexto={faixaAtual?.texto}>{buscandoLocal ? "Localizando…" : checkinEmAndamento ? "Enviando…" : "📍 Fazer check-in"}</ActionPill>
               <ActionPill onClick={() => irParaPagina(1)}>Financeiro</ActionPill>
               <ActionPill onClick={() => setEditando(true)}>Editar</ActionPill>
             </div>
