@@ -27,8 +27,11 @@ function mmss(totalSeg) {
   return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
 }
 
-// Beeps gerados na hora via Web Audio API — sem depender de nenhum arquivo de áudio externo.
-function useBeep() {
+// Mesmo bipe curto da contagem (triângulo, decaimento rápido) — sem depender de nenhum arquivo
+// de áudio externo. `duracao` curta toca só uma vez (usado na contagem regressiva); `duracao`
+// mais longa repete esse mesmo bipe sem parar até preencher o tempo pedido (usado quando uma
+// fase termina, pra soar como um apito contínuo em vez de um som parado só).
+function useApito() {
   const ctxRef = useRef(null);
   const getCtx = () => {
     if (!ctxRef.current) {
@@ -40,21 +43,38 @@ function useBeep() {
     if (ctxRef.current.state === "suspended") { try { ctxRef.current.resume(); } catch (_) {} }
     return ctxRef.current;
   };
-  return useCallback((freq, duracao, atraso = 0, volume = 0.35) => {
-    const ctx = getCtx();
-    if (!ctx) return;
+
+  const tocarNota = useCallback((ctx, freq, t0, duracaoNota, volume) => {
     const osc = ctx.createOscillator();
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(freq, t0);
     const gain = ctx.createGain();
-    osc.type = "sine";
-    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0, t0);
+    gain.gain.linearRampToValueAtTime(volume, t0 + 0.008);
+    gain.gain.exponentialRampToValueAtTime(0.001, t0 + duracaoNota);
     osc.connect(gain);
     gain.connect(ctx.destination);
-    const t0 = ctx.currentTime + atraso;
-    gain.gain.setValueAtTime(volume, t0);
-    gain.gain.exponentialRampToValueAtTime(0.001, t0 + duracao);
     osc.start(t0);
-    osc.stop(t0 + duracao + 0.02);
+    osc.stop(t0 + duracaoNota + 0.02);
   }, []);
+
+  return useCallback((duracao, atraso = 0, volume = 0.7, freq = 1400) => {
+    const ctx = getCtx();
+    if (!ctx) return;
+    const t0 = ctx.currentTime + atraso;
+
+    if (duracao <= 0.35) {
+      tocarNota(ctx, freq, t0, Math.min(duracao, 0.22), volume);
+      return;
+    }
+
+    // Repete o mesmo bipe da contagem sem pausa até preencher a duração pedida.
+    const intervalo = 0.16;
+    const nBipes = Math.max(1, Math.round(duracao / intervalo));
+    for (let i = 0; i < nBipes; i++) {
+      tocarNota(ctx, freq, t0 + i * intervalo, 0.15, volume);
+    }
+  }, [tocarNota]);
 }
 
 const campoStyle = {
@@ -174,7 +194,7 @@ export default function Cronometro() {
   const [segundosRestantes, setSegundosRestantes] = useState(0);
   const [rodando, setRodando] = useState(false);
   const [telaCheia, setTelaCheia] = useState(false);
-  const beep = useBeep();
+  const apito = useApito();
 
   const duracaoFase = useCallback((f) => {
     if (f === "preparo") return config.preparoSeg;
@@ -190,7 +210,7 @@ export default function Cronometro() {
     setSegundosRestantes(duracaoFase(primeiraFase));
     setRodando(true);
     setTela("timer");
-    beep(880, 0.15);
+    apito(0.2, 0, 0.6, 1400);
   };
 
   const reiniciar = () => {
@@ -211,7 +231,7 @@ export default function Cronometro() {
   useEffect(() => {
     if (!rodando || tela !== "timer" || fase === "fim") return;
     if (segundosRestantes <= 10 && segundosRestantes >= 1) {
-      beep(660, 0.08, 0, 0.22);
+      apito(0.1, 0, 0.75, 1400);
       return;
     }
     if (segundosRestantes > 0) return;
@@ -219,29 +239,29 @@ export default function Cronometro() {
     if (fase === "preparo") {
       setFase("round");
       setSegundosRestantes(duracaoFase("round"));
-      beep(988, 0.18, 0); beep(1318, 0.22, 0.2);
+      apito(1.1, 0, 0.85, 1400);
     } else if (fase === "round") {
       const temDescanso = config.descansoMin > 0 || config.descansoSeg > 0;
       if (roundAtual < config.rounds) {
         if (temDescanso) {
           setFase("descanso");
           setSegundosRestantes(duracaoFase("descanso"));
-          beep(523, 0.25, 0); beep(392, 0.3, 0.28);
+          apito(1.1, 0, 0.85, 1400);
         } else {
           setRoundAtual((r) => r + 1);
           setSegundosRestantes(duracaoFase("round"));
-          beep(988, 0.18, 0); beep(1318, 0.22, 0.2);
+          apito(1.1, 0, 0.85, 1400);
         }
       } else {
         setFase("fim");
         setRodando(false);
-        beep(784, 0.2, 0); beep(988, 0.22, 0.22); beep(1318, 0.3, 0.46);
+        apito(2.4, 0, 0.85, 1400);
       }
     } else if (fase === "descanso") {
       setRoundAtual((r) => r + 1);
       setFase("round");
       setSegundosRestantes(duracaoFase("round"));
-      beep(988, 0.18, 0); beep(1318, 0.22, 0.2);
+      apito(1.1, 0, 0.85, 1400);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [segundosRestantes]);
