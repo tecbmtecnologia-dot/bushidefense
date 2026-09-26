@@ -4686,6 +4686,26 @@ function GolpesProibidosCard({ pdf, pdfNome }) {
   );
 }
 
+const LINK_TABELA_PESOS = "https://fpjjcompetidor.com.br/tabela-de-pesos/";
+
+function TabelaPesosCard() {
+  const light = useDesktopLight();
+  const [aberto, setAberto] = useState(false);
+  return (
+    <Card style={light ? { marginBottom: 14 } : { marginBottom: 14, background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}>
+      <button onClick={() => setAberto((v) => !v)} style={{ width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={light ? { ...blockTitleStyle, marginBottom: 0 } : { ...blockTitleStyle, marginBottom: 0, color: "#FFFFFF" }}>⚖️ Tabela de Pesos e Categorias</span>
+        <span style={{ fontSize: 18, color: "#C9A227" }}>{aberto ? "−" : "+"}</span>
+      </button>
+      {aberto && (
+        <a href={LINK_TABELA_PESOS} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 10, fontSize: 13, fontWeight: 600, color: "#C9A227", wordBreak: "break-all" }}>
+          🔗 fpjjcompetidor.com.br/tabela-de-pesos/
+        </a>
+      )}
+    </Card>
+  );
+}
+
 function slugTexto(str) {
   return normalizarTexto(str)
     .replace(/[^a-z0-9]+/g, "-")
@@ -5576,6 +5596,7 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
         <div>
           <AvisosProfessor data={data} save={save} prof={prof} dark />
           <GolpesProibidosCard pdf={data.academia.golpesProibidosPdf} pdfNome={data.academia.golpesProibidosPdfNome} />
+          <TabelaPesosCard />
         </div>
       )}
 
@@ -6221,6 +6242,7 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
           </div>
           <div style={{ marginTop: 20 }}>
             <GolpesProibidosCard pdf={data.academia.golpesProibidosPdf} pdfNome={data.academia.golpesProibidosPdfNome} />
+            <TabelaPesosCard />
           </div>
         </div>
 
@@ -6938,6 +6960,7 @@ function AlunoDashboard({ data, save, aluno, onSair }) {
           <RegrasTatameAluno imagem={data.academia.regrasTatame} />
 
           <GolpesProibidosCard pdf={data.academia.golpesProibidosPdf} pdfNome={data.academia.golpesProibidosPdfNome} />
+          <TabelaPesosCard />
 
           {(data.academia.instagram || data.academia.facebook || data.academia.whatsapp) && (
             <Card style={{ marginBottom: 14, background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}>
