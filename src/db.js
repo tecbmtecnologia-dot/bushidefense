@@ -7,7 +7,7 @@ const MAPS = {
     termoPdf: "termo_pdf", termoPdfNome: "termo_pdf_nome", senhaAdmin: "senha_admin",
     endereco: "endereco", latitude: "latitude", longitude: "longitude", raioCheckin: "raio_checkin",
     instagram: "instagram", facebook: "facebook", whatsapp: "whatsapp",
-    mensagemAniversario: "mensagem_aniversario", regrasTatame: "regras_tatame", marcaDagua: "marca_dagua",
+    mensagemAniversario: "mensagem_aniversario", regrasTatame: "regras_tatame", sobreEquipe: "sobre_equipe", marcaDagua: "marca_dagua",
     golpesProibidosPdf: "golpes_proibidos_pdf", golpesProibidosPdfNome: "golpes_proibidos_pdf_nome",
     adminAuthUserId: "admin_auth_user_id", emailAdmin: "email_admin",
   },

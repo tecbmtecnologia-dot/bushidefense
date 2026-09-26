@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useLayoutEffect, createContext, useContext } from "react";
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid } from "recharts";
-import { Shield, User, Users, QrCode, Camera, Check, Plus, Trash2, X, Award, CalendarCheck, CreditCard, ChevronRight, LogOut, Gift, RefreshCw, Download, Share, LayoutDashboard, UserCog, Calendar, Wallet, FileText, Bell, MapPin, Video, Home, ShoppingBag, Receipt, PlayCircle, Settings, Timer, ExternalLink } from "lucide-react";
+import { Shield, User, Users, QrCode, Camera, Check, Plus, Trash2, X, Award, CalendarCheck, CreditCard, ChevronRight, LogOut, Gift, RefreshCw, Download, Share, LayoutDashboard, UserCog, Calendar, Wallet, FileText, Bell, MapPin, Video, Home, ShoppingBag, Receipt, PlayCircle, Settings, Timer, ExternalLink, ClipboardList } from "lucide-react";
 import { loadAll, saveAll, saveAlunos, salvarInscricaoPush, notificarPush, criarContaAuth, redefinirSenhaAuth, atualizarEmailAuth, excluirContaAuth, excluirDadosRelacionadosAluno } from "./db.js";
 import { uploadArquivo, removerArquivo, pg, supabaseAuth, definirLembrarSessao } from "./supabaseClient.js";
 
@@ -4657,6 +4657,22 @@ function RegrasTatameAluno({ imagem }) {
   );
 }
 
+function SobreEquipeAluno({ texto, nomeEquipe }) {
+  const [aberto, setAberto] = useState(false);
+  if (!texto || !texto.trim()) return null;
+  return (
+    <Card style={{ marginBottom: 14, background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}>
+      <button onClick={() => setAberto((v) => !v)} style={{ width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ ...blockTitleStyle, color: "#FFFFFF" }}>🥋 Sobre a {nomeEquipe || "equipe"}</span>
+        <span style={{ fontSize: 18, color: "#C9A227" }}>{aberto ? "−" : "+"}</span>
+      </button>
+      {aberto && (
+        <div style={{ marginTop: 10, fontSize: 13.5, lineHeight: 1.55, color: "#C4C0B4", whiteSpace: "pre-wrap" }}>{texto}</div>
+      )}
+    </Card>
+  );
+}
+
 function GolpesProibidosCard({ pdf, pdfNome }) {
   const light = useDesktopLight();
   if (!pdf) return null;
@@ -4674,6 +4690,58 @@ function slugTexto(str) {
   return normalizarTexto(str)
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-+|-+$)/g, "");
+}
+
+// Metodologia de aula do professor — fica fora do `data` geral, numa tabela própria que só o
+// próprio professor consegue ler (RLS), pra nunca chegar no app do aluno.
+function MetodologiaProfessor({ prof }) {
+  const light = useDesktopLight();
+  const [texto, setTexto] = useState("");
+  const [status, setStatus] = useState("carregando");
+  useEffect(() => {
+    let ativo = true;
+    pg.select("metodologias_professor", `select=texto&professor_id=eq.${prof.id}`)
+      .then((rows) => { if (ativo) { setTexto(rows?.[0]?.texto || ""); setStatus("ok"); } })
+      .catch(() => { if (ativo) setStatus("erro-carregar"); });
+    return () => { ativo = false; };
+  }, [prof.id]);
+  const salvar = async () => {
+    setStatus("salvando");
+    try {
+      await pg.upsert("metodologias_professor", [{ professor_id: prof.id, texto, atualizado_em: new Date().toISOString() }]);
+      setStatus("salvo");
+    } catch (_) {
+      setStatus("erro-salvar");
+    }
+  };
+  const muted = light ? LIGHT.muted : "#9B9891";
+  return (
+    <Card dark style={light ? undefined : { background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}>
+      <div style={light ? blockTitleStyle : { ...blockTitleStyle, color: "#FFFFFF" }}>📋 Minha metodologia de aula</div>
+      <p style={{ fontSize: 12.5, color: muted, marginBottom: 12 }}>
+        Anote como você conduz suas aulas: aquecimento, técnicas, alongamento, treinos... Só você vê esse texto — ele não aparece pros alunos.
+      </p>
+      {status === "carregando" ? (
+        <p style={{ fontSize: 12.5, color: muted }}>Carregando...</p>
+      ) : status === "erro-carregar" ? (
+        <p style={{ fontSize: 12.5, color: "#E57373" }}>Não foi possível carregar sua metodologia. Verifique a internet e abra a aba de novo.</p>
+      ) : (
+        <>
+          <textarea
+            style={{ ...(light ? inputStyle : inputStyleDark), minHeight: 200, fontFamily: "Inter", resize: "vertical", lineHeight: 1.5 }}
+            value={texto}
+            onChange={(e) => { setTexto(e.target.value); if (status !== "salvando") setStatus("ok"); }}
+            placeholder={"Aquecimento: ...\nTécnicas: ...\nAlongamento: ...\nTreinos: ..."}
+          />
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
+            <Button variant="gold" icon={Check} disabled={status === "salvando"} onClick={salvar}>{status === "salvando" ? "Salvando..." : "Salvar metodologia"}</Button>
+            {status === "salvo" && <span style={{ fontSize: 12.5, color: "#6FCF7F", fontWeight: 600 }}>Salvo!</span>}
+            {status === "erro-salvar" && <span style={{ fontSize: 12.5, color: "#E57373", fontWeight: 600 }}>Erro ao salvar. Tente de novo.</span>}
+          </div>
+        </>
+      )}
+    </Card>
+  );
 }
 
 function SalaReuniaoProfessores({ data, prof }) {
@@ -4875,6 +4943,7 @@ function ConfiguracoesAdmin({ data, save }) {
   const [whatsapp, setWhatsapp] = useState(data.academia.whatsapp || "");
   const [mensagemAniversario, setMensagemAniversario] = useState(data.academia.mensagemAniversario || "");
   const [regrasTatame, setRegrasTatame] = useState(data.academia.regrasTatame || null);
+  const [sobreEquipe, setSobreEquipe] = useState(data.academia.sobreEquipe || "");
   const [marcaDagua, setMarcaDagua] = useState(data.academia.marcaDagua || null);
   const [golpesProibidosPdf, setGolpesProibidosPdf] = useState(data.academia.golpesProibidosPdf || null);
   const [golpesProibidosPdfNome, setGolpesProibidosPdfNome] = useState(data.academia.golpesProibidosPdfNome || "");
@@ -4902,7 +4971,7 @@ function ConfiguracoesAdmin({ data, save }) {
       academia: {
         ...data.academia, nome, chavePix, termoPadrao: termo, logo, termoPdf, termoPdfNome,
         endereco, latitude: latitude === "" ? null : Number(latitude), longitude: longitude === "" ? null : Number(longitude),
-        raioCheckin: Number(raioCheckin) || 150, instagram, facebook, whatsapp, mensagemAniversario, regrasTatame, marcaDagua, golpesProibidosPdf, golpesProibidosPdfNome,
+        raioCheckin: Number(raioCheckin) || 150, instagram, facebook, whatsapp, mensagemAniversario, regrasTatame, sobreEquipe, marcaDagua, golpesProibidosPdf, golpesProibidosPdfNome,
       },
     });
   };
@@ -4955,6 +5024,10 @@ function ConfiguracoesAdmin({ data, save }) {
             <input ref={regrasRef} type="file" accept="image/*" hidden onChange={onRegras} />
           </div>
           <p style={{ fontSize: 11.5, color: rotuloConfig, marginTop: 4 }}>Se preenchida, aparece no app do aluno, na aba "Mais", em um card "Regras do tatame" que ele pode expandir.</p>
+        </Field>
+        <Field label="Sobre a equipe (texto, opcional)" labelColor={rotuloConfig}>
+          <textarea style={{ ...inputStyle, minHeight: 120, fontFamily: "Inter", resize: "vertical" }} value={sobreEquipe} onChange={(e) => setSobreEquipe(e.target.value)} placeholder="Conte a história da equipe, os valores, os professores..." />
+          <p style={{ fontSize: 11.5, color: rotuloConfig, marginTop: 4 }}>Se preenchido, aparece no app do aluno, na aba "Mais", em um card "Sobre a" + o nome da academia, que ele pode expandir.</p>
         </Field>
         <Field label="Marca d'água dos relatórios em PDF (imagem, opcional)" labelColor={rotuloConfig}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -5179,6 +5252,7 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
     { id: "videos", label: "Vídeos" },
     { id: "produtos", label: "Produtos" },
     { id: "vendas", label: "Vendas" },
+    { id: "metodologia", label: "Metodologia" },
     { id: "reuniao", label: "Reunião" },
     { id: "cronometro", label: "Cronômetro", externo: "/cronometro.html" },
     { id: "perfil", label: "Meu Perfil" },
@@ -5206,11 +5280,11 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
     });
 
   const iconesTabs = {
-    dashboard: "📊", inicio: "🏠", alunos: "🤼", checkins: "📍", turmas: "📅", financeiro: "💰", relatorios: "📑", avisos: "🔔", videos: "🎬", produtos: "🛍️", vendas: "💵", reuniao: "🎥", cronometro: "⏱️", perfil: "👤",
+    dashboard: "📊", inicio: "🏠", alunos: "🤼", checkins: "📍", turmas: "📅", financeiro: "💰", relatorios: "📑", avisos: "🔔", videos: "🎬", produtos: "🛍️", vendas: "💵", metodologia: "📋", reuniao: "🎥", cronometro: "⏱️", perfil: "👤",
   };
   const iconesTabsClaro = {
     dashboard: LayoutDashboard, inicio: Home, alunos: Users, checkins: QrCode, turmas: Calendar, financeiro: Wallet,
-    relatorios: FileText, avisos: Bell, videos: PlayCircle, produtos: ShoppingBag, vendas: Receipt, reuniao: Video, cronometro: Timer, perfil: User,
+    relatorios: FileText, avisos: Bell, videos: PlayCircle, produtos: ShoppingBag, vendas: Receipt, metodologia: ClipboardList, reuniao: Video, cronometro: Timer, perfil: User,
   };
 
   const [refFullBleed, estiloFullBleed] = useFullBleed();
@@ -5510,6 +5584,8 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
       {tab === "produtos" && <ProdutosProfessor data={data} save={save} prof={prof} />}
 
       {tab === "vendas" && <VendasProfessor data={data} save={save} prof={prof} />}
+
+      {tab === "metodologia" && <MetodologiaProfessor prof={prof} />}
 
       {tab === "reuniao" && <SalaReuniaoProfessores data={data} prof={prof} />}
 
@@ -6136,6 +6212,9 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
           <div style={{ marginTop: 20 }}>
             <div style={{ ...blockTitleStyle, color: "#F5F3EC" }}>💵 Vendas de produtos</div>
             <VendasProfessor data={data} save={save} prof={prof} />
+          </div>
+          <div style={{ marginTop: 20 }}>
+            <MetodologiaProfessor prof={prof} />
           </div>
           <div style={{ marginTop: 20 }}>
             <SalaReuniaoProfessores data={data} prof={prof} />
@@ -6853,6 +6932,8 @@ function AlunoDashboard({ data, save, aluno, onSair }) {
           <VideosAluno videos={(data.videos || []).filter((v) => (!v.professorId || v.professorId === aluno.professorId) && (!v.unidadeId || v.unidadeId === aluno.unidadeId))} />
 
           <ProdutosAluno produtos={(data.produtos || []).filter((p) => p.professorId === aluno.professorId && p.ativo !== false)} />
+
+          <SobreEquipeAluno texto={data.academia.sobreEquipe} nomeEquipe={data.academia.nome} />
 
           <RegrasTatameAluno imagem={data.academia.regrasTatame} />
 
