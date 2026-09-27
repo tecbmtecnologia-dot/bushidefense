@@ -4165,7 +4165,7 @@ function youtubeEmbedUrl(url) {
   return match ? `https://www.youtube.com/embed/${match[1]}` : null;
 }
 
-function VideoForm({ unidades, onSave, onCancel }) {
+function VideoForm({ unidades, unidadeFixa, onSave, onCancel }) {
   const [titulo, setTitulo] = useState("");
   const [legenda, setLegenda] = useState("");
   const [url, setUrl] = useState("");
@@ -4199,10 +4199,14 @@ function VideoForm({ unidades, onSave, onCancel }) {
         <Field label="Título"><input style={inputStyle} value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="Ex: Raspagem básica da guarda fechada" /></Field>
         <Field label="Legenda (opcional)"><input style={inputStyle} value={legenda} onChange={(e) => setLegenda(e.target.value)} placeholder="Ex: Atenção ao ângulo do quadril" /></Field>
         <Field label="Unidade">
-          <select style={inputStyle} value={unidadeId} onChange={(e) => setUnidadeId(e.target.value)}>
-            <option value="">Todas as unidades</option>
-            {(unidades || []).map((u) => <option key={u.id} value={u.id}>{u.nome}</option>)}
-          </select>
+          {unidadeFixa !== undefined ? (
+            <input style={{ ...inputStyle, opacity: 0.75 }} value={unidadeFixa ? unidadeFixa.nome : "Todas as unidades"} disabled readOnly />
+          ) : (
+            <select style={inputStyle} value={unidadeId} onChange={(e) => setUnidadeId(e.target.value)}>
+              <option value="">Todas as unidades</option>
+              {(unidades || []).map((u) => <option key={u.id} value={u.id}>{u.nome}</option>)}
+            </select>
+          )}
         </Field>
         <Field label="Link do YouTube">
           <input style={inputStyle} value={url.startsWith("http") && !url.includes("/storage/v1/") ? url : ""} onChange={(e) => setUrl(e.target.value)} placeholder="https://youtube.com/watch?v=..." />
@@ -4230,8 +4234,10 @@ function VideosProfessor({ data, save, prof }) {
     .filter((v) => !v.professorId || v.professorId === prof.id)
     .sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || ""));
 
+  const unidadeDoProfessor = (data.unidades || []).find((u) => u.id === prof.unidadeId) || null;
+
   const adicionar = async (form) => {
-    const video = { id: uid(), criadoEm: new Date().toISOString(), professorId: prof.id, ...form };
+    const video = { id: uid(), criadoEm: new Date().toISOString(), professorId: prof.id, ...form, unidadeId: unidadeDoProfessor?.id || "" };
     await save({ ...data, videos: [...(data.videos || []), video] });
     setNovo(false);
   };
@@ -4239,11 +4245,11 @@ function VideosProfessor({ data, save, prof }) {
 
   return (
     <div>
-      <p style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#9B9891", marginTop: 0 }}>Vídeos que você publicar aqui aparecem só pros seus alunos vinculados — cole um link do YouTube ou envie um arquivo MP4 direto. Também dá pra vincular a uma unidade específica.</p>
+      <p style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#9B9891", marginTop: 0 }}>Vídeos que você publicar aqui aparecem só pros seus alunos vinculados{unidadeDoProfessor ? ` da unidade ${unidadeDoProfessor.nome}` : ""} — cole um link do YouTube ou envie um arquivo MP4 direto.</p>
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
         <Button icon={Plus} onClick={() => setNovo(true)}>Novo vídeo</Button>
       </div>
-      {novo && <VideoForm unidades={data.unidades} onCancel={() => setNovo(false)} onSave={adicionar} />}
+      {novo && <VideoForm unidades={data.unidades} unidadeFixa={unidadeDoProfessor} onCancel={() => setNovo(false)} onSave={adicionar} />}
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {videosVisiveis.map((v) => {
           const unidadeDoVideo = (data.unidades || []).find((u) => u.id === v.unidadeId);
