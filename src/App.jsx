@@ -6220,8 +6220,12 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
         {/* PÁGINA 6 — MAIS */}
         <div className="qg-sem-barra" style={{ flex: "0 0 100%", width: "100%", boxSizing: "border-box", scrollSnapAlign: "start", scrollSnapStop: "always", overflowY: "auto", touchAction: "pan-y", padding: "20px 20px 24px" }}>
           <div style={{ fontFamily: "Oswald", fontWeight: 700, fontSize: 20, color: "#fff", textTransform: "uppercase", marginBottom: 4 }}>☰ Mais</div>
-          <div style={{ fontSize: 12.5, color: "#9B9891", marginBottom: 16 }}>Avisos, turmas e produtos</div>
+          <div style={{ fontSize: 12.5, color: "#9B9891", marginBottom: 16 }}>Avisos, vídeos, turmas e produtos</div>
           <AvisosProfessor data={data} save={save} prof={prof} dark={true} />
+          <div style={{ marginTop: 20 }}>
+            <div style={{ ...blockTitleStyle, color: "#F5F3EC" }}>🎬 Vídeos de técnicas</div>
+            <VideosProfessor data={data} save={save} prof={prof} />
+          </div>
           <div style={{ marginTop: 20 }}>
             <div style={{ ...blockTitleStyle, color: "#F5F3EC" }}>📅 Minhas turmas</div>
             <TurmasProfessor data={data} save={save} prof={prof} />
