@@ -180,6 +180,11 @@ export async function loadAll() {
  */
 export async function saveAll(next, anterior) {
   const mudou = (chave) => !anterior || next[chave] !== anterior[chave];
+  // Linhas novas ou alteradas (por referência) — ver comentário em "professores" abaixo.
+  const soAlterados = (lista, listaAnterior) => {
+    const anterioresPorId = new Map((listaAnterior || []).map((it) => [it.id, it]));
+    return lista.filter((it) => anterioresPorId.get(it.id) !== it);
+  };
 
   const tarefas = [];
   if (mudou("academia")) {
@@ -190,16 +195,16 @@ export async function saveAll(next, anterior) {
     tarefas.push({ nome: "faixas", fn: () => syncTable("faixas", faixasComOrdem) });
   }
   if (mudou("planos")) tarefas.push({ nome: "planos", fn: () => syncTable("planos", next.planos) });
-  if (mudou("turmas")) tarefas.push({ nome: "turmas", fn: () => syncTable("turmas", next.turmas) });
+  // turmas, sessoes_checkin, avisos, videos e produtos têm a mesma RLS "admin ou professor dono"
+  // (2026-09-11_rls_fase2b.sql) — mesmo motivo de "professores" abaixo: só as linhas alteradas.
+  if (mudou("turmas")) tarefas.push({ nome: "turmas", fn: () => syncTable("turmas", soAlterados(next.turmas, anterior?.turmas), next.turmas) });
   if (mudou("professores")) {
     // Manda pro banco só as linhas de professor que de fato mudaram (não a tabela inteira): um
     // professor sem ser admin só tem permissão (RLS) pra escrever a própria linha, e o upsert é
     // um único INSERT ... ON CONFLICT DO UPDATE — se ele incluir a linha de outro professor sem
     // ter mudado nada nela, o Postgres AINDA testa a política daquela linha e rejeita a operação
     // inteira. Comparação por referência funciona pelo mesmo motivo do `mudou` acima.
-    const anterioresPorId = new Map((anterior?.professores || []).map((p) => [p.id, p]));
-    const alterados = next.professores.filter((p) => anterioresPorId.get(p.id) !== p);
-    tarefas.push({ nome: "professores", fn: () => syncTable("professores", alterados, next.professores) });
+    tarefas.push({ nome: "professores", fn: () => syncTable("professores", soAlterados(next.professores, anterior?.professores), next.professores) });
   }
   if (mudou("alunos")) {
     tarefas.push({ nome: "alunos", fn: () => syncTable("alunos", next.alunos) });
@@ -207,12 +212,12 @@ export async function saveAll(next, anterior) {
     const todosPagamentos = next.alunos.flatMap((a) => (a.pagamentos || []).map((p) => ({ ...p, alunoId: a.id })));
     tarefas.push({ nome: "pagamentos", fn: () => syncTable("pagamentos", todosPagamentos) });
   }
-  if (mudou("sessoes")) tarefas.push({ nome: "sessoes_checkin", fn: () => syncTable("sessoes_checkin", next.sessoes) });
+  if (mudou("sessoes")) tarefas.push({ nome: "sessoes_checkin", fn: () => syncTable("sessoes_checkin", soAlterados(next.sessoes, anterior?.sessoes), next.sessoes) });
   if (mudou("checkins")) tarefas.push({ nome: "checkins", fn: () => syncTable("checkins", next.checkins) });
-  if (mudou("avisos")) tarefas.push({ nome: "avisos", fn: () => syncTable("avisos", next.avisos || []) });
-  if (mudou("videos")) tarefas.push({ nome: "videos", fn: () => syncTable("videos", next.videos || []) });
+  if (mudou("avisos")) tarefas.push({ nome: "avisos", fn: () => syncTable("avisos", soAlterados(next.avisos || [], anterior?.avisos), next.avisos || []) });
+  if (mudou("videos")) tarefas.push({ nome: "videos", fn: () => syncTable("videos", soAlterados(next.videos || [], anterior?.videos), next.videos || []) });
   if (mudou("unidades")) tarefas.push({ nome: "unidades", fn: () => syncTable("unidades", next.unidades || []) });
-  if (mudou("produtos")) tarefas.push({ nome: "produtos", fn: () => syncTable("produtos", next.produtos || []) });
+  if (mudou("produtos")) tarefas.push({ nome: "produtos", fn: () => syncTable("produtos", soAlterados(next.produtos || [], anterior?.produtos), next.produtos || []) });
   if (mudou("vendas")) tarefas.push({ nome: "vendas", fn: () => syncTable("vendas", next.vendas || []) });
 
   if (!tarefas.length) return;
