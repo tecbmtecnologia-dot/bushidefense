@@ -31,7 +31,7 @@ const MAPS = {
     contatoEmergenciaTelefone: "contato_emergencia_telefone", foto: "foto", faixaId: "faixa_id",
     grau: "grau", dataNascimento: "data_nascimento", matricula: "matricula", planoId: "plano_id",
     diaVencimento: "dia_vencimento", ultimoPagamento: "ultimo_pagamento",
-    checkinsDesdeGraduacao: "checkins_desde_graduacao", termoAceito: "termo_aceito",
+    checkinsDesdeGraduacao: "checkins_desde_graduacao", ultimaGraduacaoEm: "ultima_graduacao_em", ajusteAulas: "ajuste_aulas", termoAceito: "termo_aceito",
     termoAceitoEm: "termo_aceito_em", termoAssinadoManual: "termo_assinado_manual", professorId: "professor_id", peso: "peso", apelido: "apelido", unidadeId: "unidade_id", ativo: "ativo", turmaId: "turma_id", assinaturaTermo: "assinatura_termo", codigo: "codigo", authUserId: "auth_user_id",
   },
   pagamentos: { id: "id", alunoId: "aluno_id", data: "data", valor: "valor" },
@@ -133,6 +133,7 @@ export async function loadAll() {
     a.grau = Number(a.grau) || 0;
     a.diaVencimento = a.diaVencimento === null ? null : Number(a.diaVencimento);
     a.checkinsDesdeGraduacao = Number(a.checkinsDesdeGraduacao) || 0;
+    a.ajusteAulas = Number(a.ajusteAulas) || 0;
     a.codigo = a.codigo === null || a.codigo === undefined ? null : Number(a.codigo);
     a.pagamentos = pagamentosPorAluno[a.id] || [];
     return a;

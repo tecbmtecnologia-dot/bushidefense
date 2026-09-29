@@ -224,16 +224,14 @@ async function marcarPresencaEm(data, save, sessaoId, alunoId) {
   const jaFez = data.checkins.some((c) => c.sessaoId === sessaoId && c.alunoId === alunoId);
   if (jaFez) return;
   const checkin = { id: uid(), sessaoId, alunoId, dataHora: new Date().toISOString() };
-  const alunos = data.alunos.map((a) => (a.id === alunoId ? { ...a, checkinsDesdeGraduacao: (a.checkinsDesdeGraduacao || 0) + 1 } : a));
-  await save({ ...data, checkins: [...data.checkins, checkin], alunos });
+  await save({ ...data, checkins: [...data.checkins, checkin] });
 }
 
 async function removerPresencaEm(data, save, sessaoId, alunoId) {
   const checkin = data.checkins.find((c) => c.sessaoId === sessaoId && c.alunoId === alunoId);
   if (!checkin) return;
   const checkins = data.checkins.filter((c) => c.id !== checkin.id);
-  const alunos = data.alunos.map((a) => (a.id === alunoId ? { ...a, checkinsDesdeGraduacao: Math.max(0, (a.checkinsDesdeGraduacao || 0) - 1) } : a));
-  await save({ ...data, checkins, alunos });
+  await save({ ...data, checkins });
 }
 
 function distanciaMetros(lat1, lon1, lat2, lon2) {
@@ -440,6 +438,15 @@ function progressoGraduacaoInfo(faixas, faixaId, grau, checkinsDesdeGraduacao, c
   if (atual.aulasPorGrau == null) return { texto: `Graus completos — próxima: ${proxima.nome}`, restantes: null };
   const falta = Math.max(0, atual.aulasPorGrau - (checkinsDesdeGraduacao || 0));
   return { texto: falta === 0 ? `Elegível p/ avaliação da faixa ${proxima.nome}` : `Faltam ${falta} aula(s) p/ avaliação da faixa ${proxima.nome}`, restantes: falta };
+}
+
+// Aulas que contam pro próximo grau/faixa: os check-ins do histórico do aluno feitos depois da
+// última graduação (sem graduação registrada, conta o histórico inteiro), mais o ajuste manual
+// do professor. Calculado sempre a partir de data.checkins pra bater com o "Histórico de treinos".
+function aulasDesdeGraduacao(aluno, checkins) {
+  const desde = aluno.ultimaGraduacaoEm ? new Date(aluno.ultimaGraduacaoEm).getTime() : null;
+  const doHistorico = (checkins || []).filter((c) => c.alunoId === aluno.id && (desde == null || new Date(c.dataHora).getTime() > desde)).length;
+  return Math.max(0, doHistorico + (Number(aluno.ajusteAulas) || 0));
 }
 
 function progressoGraduacaoTexto(faixas, faixaId, grau, checkinsDesdeGraduacao, categoria) {
@@ -1565,7 +1572,7 @@ function RelatoriosAdmin({ data }) {
   };
 
   const alunosPertoDeGraduar = data.alunos
-    .map((a) => ({ aluno: a, info: progressoGraduacaoInfo(data.faixas, a.faixaId, a.grau, a.checkinsDesdeGraduacao, categoriaEtaria(a.dataNascimento)) }))
+    .map((a) => ({ aluno: a, info: progressoGraduacaoInfo(data.faixas, a.faixaId, a.grau, aulasDesdeGraduacao(a, data.checkins), categoriaEtaria(a.dataNascimento)) }))
     .filter((c) => c.info.restantes !== null && c.info.restantes <= 5)
     .sort((a, b) => a.info.restantes - b.info.restantes);
 
@@ -3510,8 +3517,7 @@ function CheckinRetroativoProfessor({ data, save, prof, dark = true }) {
     const dataHoraCheckin = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate(), agora.getHours(), agora.getMinutes(), agora.getSeconds());
     dataHoraCheckin.setFullYear(ano, mes - 1, dia);
     const checkin = { id: uid(), sessaoId: null, alunoId, dataHora: dataHoraCheckin.toISOString() };
-    const alunos = data.alunos.map((a) => (a.id === alunoId ? { ...a, checkinsDesdeGraduacao: (a.checkinsDesdeGraduacao || 0) + 1 } : a));
-    await save({ ...data, checkins: [...data.checkins, checkin], alunos });
+    await save({ ...data, checkins: [...data.checkins, checkin] });
     const dataFormatada = new Date(dataSel + "T00:00:00").toLocaleDateString("pt-BR");
     notificarPush("Check-in registrado!", `Seu professor confirmou sua presença do dia ${dataFormatada}.`, { alunoId });
     setEnviando(false);
@@ -3524,8 +3530,7 @@ function CheckinRetroativoProfessor({ data, save, prof, dark = true }) {
     if (removendoId) return;
     setRemovendoId(checkinId);
     const checkins = data.checkins.filter((c) => c.id !== checkinId);
-    const alunos = data.alunos.map((a) => (a.id === alunoId ? { ...a, checkinsDesdeGraduacao: Math.max(0, (a.checkinsDesdeGraduacao || 0) - 1) } : a));
-    await save({ ...data, checkins, alunos });
+    await save({ ...data, checkins });
     setRemovendoId(null);
     setConfirmandoRemocaoId(null);
   };
@@ -3888,7 +3893,7 @@ function AlunosPertoDeGraduar({ data, prof, dark = true }) {
   const LIMITE_AULAS = 5;
   const candidatos = data.alunos
     .filter((a) => a.professorId === prof.id)
-    .map((a) => ({ aluno: a, info: progressoGraduacaoInfo(data.faixas, a.faixaId, a.grau, a.checkinsDesdeGraduacao, categoriaEtaria(a.dataNascimento)) }))
+    .map((a) => ({ aluno: a, info: progressoGraduacaoInfo(data.faixas, a.faixaId, a.grau, aulasDesdeGraduacao(a, data.checkins), categoriaEtaria(a.dataNascimento)) }))
     .filter((c) => c.info.restantes !== null && c.info.restantes <= LIMITE_AULAS)
     .sort((a, b) => a.info.restantes - b.info.restantes);
 
@@ -5293,10 +5298,10 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
       return a.nome.toLowerCase().includes(termo) || (a.apelido || "").toLowerCase().includes(termo);
     })
     .sort((a, b) => {
-      if (ordenarPor === "frequencia") return (b.checkinsDesdeGraduacao || 0) - (a.checkinsDesdeGraduacao || 0);
+      if (ordenarPor === "frequencia") return aulasDesdeGraduacao(b, data.checkins) - aulasDesdeGraduacao(a, data.checkins);
       if (ordenarPor === "graduar") {
-        const ra = progressoGraduacaoInfo(data.faixas, a.faixaId, a.grau, a.checkinsDesdeGraduacao, categoriaEtaria(a.dataNascimento)).restantes;
-        const rb = progressoGraduacaoInfo(data.faixas, b.faixaId, b.grau, b.checkinsDesdeGraduacao, categoriaEtaria(b.dataNascimento)).restantes;
+        const ra = progressoGraduacaoInfo(data.faixas, a.faixaId, a.grau, aulasDesdeGraduacao(a, data.checkins), categoriaEtaria(a.dataNascimento)).restantes;
+        const rb = progressoGraduacaoInfo(data.faixas, b.faixaId, b.grau, aulasDesdeGraduacao(b, data.checkins), categoriaEtaria(b.dataNascimento)).restantes;
         if (ra === null && rb === null) return 0;
         if (ra === null) return 1;
         if (rb === null) return -1;
@@ -5509,7 +5514,7 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
 
                       <div style={secaoStyle}>
                         <div style={tituloSecaoStyle}>🥋 Graduação</div>
-                        <div style={{ fontSize: 11.5, color: light ? LIGHT.muted : "#9B9891", marginBottom: 8 }}>{progressoGraduacaoTexto(data.faixas, a.faixaId, a.grau, a.checkinsDesdeGraduacao, categoriaEtaria(a.dataNascimento))} · {a.checkinsDesdeGraduacao || 0} aula(s) desde a última graduação</div>
+                        <div style={{ fontSize: 11.5, color: light ? LIGHT.muted : "#9B9891", marginBottom: 8 }}>{progressoGraduacaoTexto(data.faixas, a.faixaId, a.grau, aulasDesdeGraduacao(a, data.checkins), categoriaEtaria(a.dataNascimento))} · {aulasDesdeGraduacao(a, data.checkins)} aula(s) desde a última graduação</div>
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
                           {faixaAtual?.grausMax > 0 && <Button variant="ghost" onClick={() => graduar(a.id, "grau")} disabled={a.grau >= faixaAtual.grausMax} style={ghostEscuro}>+1 grau</Button>}
                           <Button variant="ghost" onClick={() => graduar(a.id, "faixa")} disabled={idx >= data.faixas.length - 1} style={ghostEscuro}>Graduar faixa</Button>
@@ -5873,7 +5878,12 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
   };
   const ajustarAulasManualmente = async (alunoId, delta) => {
     if (!delta) return;
-    const alunos = data.alunos.map((a) => (a.id === alunoId ? { ...a, checkinsDesdeGraduacao: Math.max(0, (a.checkinsDesdeGraduacao || 0) + delta) } : a));
+    const alunos = data.alunos.map((a) => {
+      if (a.id !== alunoId) return a;
+      // Não deixa o ajuste negativo passar do que o histórico tem (senão "-1" some em cliques que não mudam nada na tela).
+      const doHistorico = aulasDesdeGraduacao({ ...a, ajusteAulas: 0 }, data.checkins);
+      return { ...a, ajusteAulas: Math.max(-doHistorico, (Number(a.ajusteAulas) || 0) + delta) };
+    });
     await save({ ...data, alunos });
     if (delta > 0) {
       notificarPush("Aula adicionada!", `Seu professor incluiu ${delta} aula(s) no seu progresso de graduação.`, { alunoId });
@@ -5887,11 +5897,11 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
       const faixaAtual = data.faixas[idx] || data.faixas[0];
       if (tipo === "grau") {
         if (!faixaAtual.grausMax) return a;
-        return { ...a, grau: Math.min(a.grau + 1, faixaAtual.grausMax), checkinsDesdeGraduacao: 0 };
+        return { ...a, grau: Math.min(a.grau + 1, faixaAtual.grausMax), checkinsDesdeGraduacao: 0, ultimaGraduacaoEm: new Date().toISOString(), ajusteAulas: 0 };
       }
       const proxima = data.faixas[idx + 1];
       if (!proxima) return a;
-      return { ...a, faixaId: proxima.id, grau: 0, checkinsDesdeGraduacao: 0 };
+      return { ...a, faixaId: proxima.id, grau: 0, checkinsDesdeGraduacao: 0, ultimaGraduacaoEm: new Date().toISOString(), ajusteAulas: 0 };
     });
     await save({ ...data, alunos });
   };
@@ -6067,10 +6077,10 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
                 return a.nome.toLowerCase().includes(termo) || (a.apelido || "").toLowerCase().includes(termo);
               })
               .sort((a, b) => {
-                if (ordenarPor === "frequencia") return (b.checkinsDesdeGraduacao || 0) - (a.checkinsDesdeGraduacao || 0);
+                if (ordenarPor === "frequencia") return aulasDesdeGraduacao(b, data.checkins) - aulasDesdeGraduacao(a, data.checkins);
                 if (ordenarPor === "graduar") {
-                  const ra = progressoGraduacaoInfo(data.faixas, a.faixaId, a.grau, a.checkinsDesdeGraduacao, categoriaEtaria(a.dataNascimento)).restantes;
-                  const rb = progressoGraduacaoInfo(data.faixas, b.faixaId, b.grau, b.checkinsDesdeGraduacao, categoriaEtaria(b.dataNascimento)).restantes;
+                  const ra = progressoGraduacaoInfo(data.faixas, a.faixaId, a.grau, aulasDesdeGraduacao(a, data.checkins), categoriaEtaria(a.dataNascimento)).restantes;
+                  const rb = progressoGraduacaoInfo(data.faixas, b.faixaId, b.grau, aulasDesdeGraduacao(b, data.checkins), categoriaEtaria(b.dataNascimento)).restantes;
                   if (ra === null && rb === null) return 0;
                   if (ra === null) return 1;
                   if (rb === null) return -1;
@@ -6121,7 +6131,7 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
 
                       <div style={secaoStyle}>
                         <div style={tituloSecaoStyle}>🥋 Graduação</div>
-                        <div style={{ fontSize: 11.5, color: "#9B9891", marginBottom: 8 }}>{progressoGraduacaoTexto(data.faixas, a.faixaId, a.grau, a.checkinsDesdeGraduacao, categoriaEtaria(a.dataNascimento))} · {a.checkinsDesdeGraduacao || 0} aula(s) desde a última graduação</div>
+                        <div style={{ fontSize: 11.5, color: "#9B9891", marginBottom: 8 }}>{progressoGraduacaoTexto(data.faixas, a.faixaId, a.grau, aulasDesdeGraduacao(a, data.checkins), categoriaEtaria(a.dataNascimento))} · {aulasDesdeGraduacao(a, data.checkins)} aula(s) desde a última graduação</div>
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
                           {faixaAtual?.grausMax > 0 && <Button variant="ghost" style={ghostDark} onClick={() => graduar(a.id, "grau")} disabled={a.grau >= faixaAtual.grausMax}>+1 grau</Button>}
                           <Button variant="ghost" style={ghostDark} onClick={() => graduar(a.id, "faixa")} disabled={idx >= data.faixas.length - 1}>Graduar faixa</Button>
@@ -6706,8 +6716,7 @@ function AlunoDashboard({ data, save, aluno, onSair }) {
     const jaFez = data.checkins.some((c) => c.sessaoId === sessao.id && c.alunoId === aluno.id);
     if (jaFez) { setMsg("Você já fez check-in nesta aula."); return; }
     const checkin = { id: uid(), sessaoId: sessao.id, alunoId: aluno.id, dataHora: new Date().toISOString() };
-    const alunos = data.alunos.map((a) => (a.id === aluno.id ? { ...a, checkinsDesdeGraduacao: (a.checkinsDesdeGraduacao || 0) + 1 } : a));
-    await save({ ...data, checkins: [...data.checkins, checkin], alunos });
+    await save({ ...data, checkins: [...data.checkins, checkin] });
     setMsg("Check-in confirmado! Bom treino 🥋");
   };
 
@@ -6813,9 +6822,9 @@ function AlunoDashboard({ data, save, aluno, onSair }) {
                 <div style={{ marginTop: 16 }}><BeltBar faixas={data.faixas} faixaId={aluno.faixaId} grau={aluno.grau} size="lg" textColor="#FFFFFF" /></div>
 
                 <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 10, marginTop: 14 }}>
-                  <StatTile numero={aluno.checkinsDesdeGraduacao || 0} label="check-ins registrados" />
+                  <StatTile numero={meusCheckins.length} label="check-ins registrados" />
                   <StatTile
-                    numero={faixaAtual?.aulasPorGrau ? Math.max(0, faixaAtual.aulasPorGrau - (aluno.checkinsDesdeGraduacao || 0)) : "—"}
+                    numero={faixaAtual?.aulasPorGrau ? Math.max(0, faixaAtual.aulasPorGrau - aulasDesdeGraduacao(aluno, data.checkins)) : "—"}
                     label={faixaAtual?.aulasPorGrau ? "aulas p/ o próximo grau" : "sem critério de grau"}
                   />
                 </div>
@@ -6884,7 +6893,7 @@ function AlunoDashboard({ data, save, aluno, onSair }) {
           <div style={{ fontFamily: "Oswald", fontWeight: 700, fontSize: 20, color: "#fff", textTransform: "uppercase", marginBottom: 4 }}>🥋 Evolução</div>
           <div style={{ fontSize: 12.5, color: "#9B9891", marginBottom: 16 }}>Sua jornada até a próxima faixa</div>
           <div style={{ marginBottom: 14 }}>
-            <EvolucaoFaixas faixas={data.faixas} faixaId={aluno.faixaId} grau={aluno.grau} checkinsDesdeGraduacao={aluno.checkinsDesdeGraduacao} categoria={categoriaEtaria(aluno.dataNascimento)} />
+            <EvolucaoFaixas faixas={data.faixas} faixaId={aluno.faixaId} grau={aluno.grau} checkinsDesdeGraduacao={aulasDesdeGraduacao(aluno, data.checkins)} categoria={categoriaEtaria(aluno.dataNascimento)} />
           </div>
           <div style={{ ...blockTitleStyle, margin: "0 0 10px", color: "#F5F3EC" }}>Histórico de treinos</div>
           <Card style={{ background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}>
