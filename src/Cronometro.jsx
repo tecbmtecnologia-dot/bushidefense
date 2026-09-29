@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { pg } from "./supabaseClient.js";
+import { LOGO_CIRCULAR } from "./logos.js";
 
 // Cronômetro de treino: página standalone (fora do login), pensada pra ficar aberta numa TV do
 // tatame. Só lê a tabela pública "academia" (nome/logo) pra se personalizar — não depende de
@@ -93,7 +94,7 @@ function ConfigTela({ config, setConfig, onIniciar, academia }) {
   const duracaoRound = config.roundMin * 60 + config.roundSeg;
   const podeIniciar = config.rounds > 0 && duracaoRound > 0;
   const num = (campo) => (e) => setConfig((c) => ({ ...c, [campo]: Math.max(0, Number(e.target.value) || 0) }));
-  const logoExibido = config.logoCustom || academia?.logo;
+  const logoExibido = config.logoCustom || academia?.logo || LOGO_CIRCULAR;
   const onLogoFile = (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
@@ -106,11 +107,7 @@ function ConfigTela({ config, setConfig, onIniciar, academia }) {
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, boxSizing: "border-box" }}>
       <div style={{ width: "100%", maxWidth: 460, background: "linear-gradient(165deg, #1A1D24 0%, #0D0F13 100%)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 20, padding: "28px 26px", boxShadow: "0 20px 60px rgba(0,0,0,0.45)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 22 }}>
-          {logoExibido ? (
-            <img src={logoExibido} alt="" style={{ width: 44, height: 44, borderRadius: 10, objectFit: "cover" }} />
-          ) : (
-            <div style={{ width: 44, height: 44, borderRadius: 10, background: "rgba(201,162,39,0.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>⏱️</div>
-          )}
+          <img src={logoExibido} alt="" style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "contain" }} />
           <div>
             <div style={{ fontFamily: "Oswald", fontWeight: 700, fontSize: 18, color: "#F5F3EC", textTransform: "uppercase", letterSpacing: 0.4 }}>{config.nomeCustom || academia?.nome || "Cronômetro de treino"}</div>
             <div style={{ fontSize: 12, color: "#9B9891" }}>Configure os rounds e mostre na TV do tatame</div>
@@ -132,7 +129,7 @@ function ConfigTela({ config, setConfig, onIniciar, academia }) {
                 <button type="button" onClick={() => setConfig((c) => ({ ...c, logoCustom: null }))} style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.14)", background: "transparent", color: "#9B9891", fontSize: 12.5, cursor: "pointer" }}>Usar padrão</button>
               )}
             </div>
-            <p style={{ fontSize: 11, color: "#6B6656", marginTop: 5 }}>{config.logoCustom ? "Usando a logo enviada por você, só nessa TV/dispositivo." : `Sem logo própria enviada, usa a logo da academia${academia?.logo ? "" : " (ainda não cadastrada)"}.`}</p>
+            <p style={{ fontSize: 11, color: "#6B6656", marginTop: 5 }}>{config.logoCustom ? "Usando a logo enviada por você, só nessa TV/dispositivo." : `Sem logo própria enviada, usa a logo da academia.`}</p>
           </div>
 
           <Campo label="Quantidade de rounds">
@@ -308,7 +305,7 @@ export default function Cronometro() {
     descanso: "Descanso",
     fim: "Treino finalizado 🥋",
   }[fase];
-  const logoExibido = config.logoCustom || academia?.logo;
+  const logoExibido = config.logoCustom || academia?.logo || LOGO_CIRCULAR;
   const nomeExibido = config.nomeCustom || academia?.nome;
 
   return (
