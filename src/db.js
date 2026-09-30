@@ -47,11 +47,24 @@ const MAPS = {
   vendas: { id: "id", alunoId: "aluno_id", professorId: "professor_id", produtoId: "produto_id", produtoNome: "produto_nome", valor: "valor", data: "data", criadoEm: "criado_em" },
 };
 
-function toDb(entity, obj) {
+/* Colunas NOT NULL (com default no banco) — nunca podem ir como null. Um cadastro novo criado
+   pela interface não tem esses campos, e mandar null explícito fura o default e o banco rejeita
+   ("null value in column ... violates not-null constraint"). */
+const PADROES = {
+  alunos: { ajusteAulas: 0 },
+  professores: { primeiroAcesso: true, termoAceito: false },
+};
+
+/* `omitirIndefinidos`: campos que o objeto não tem (undefined) ficam FORA da linha, pro banco
+   usar o default da coluna (ver `missing=default` em pg.upsert) — em vez de forçar null. */
+function toDb(entity, obj, { omitirIndefinidos = false } = {}) {
   const map = MAPS[entity];
+  const padroes = PADROES[entity] || {};
   const row = {};
   for (const [jsKey, dbKey] of Object.entries(map)) {
-    const valor = obj[jsKey];
+    let valor = obj[jsKey];
+    if ((valor === undefined || valor === null) && jsKey in padroes) valor = padroes[jsKey];
+    if (valor === undefined && omitirIndefinidos) continue;
     const vazio = valor === "" && ["email", "faixaId", "planoId", "professorId", "dataNascimento", "unidadeId", "turmaId"].includes(jsKey);
     // "planos" também usa unidadeId como vínculo opcional (plano vale pra unidade específica ou pra todas se vazio).
     row[dbKey] = valor === undefined || vazio ? null : valor;
@@ -73,7 +86,7 @@ function fromDb(entity, row) {
  * mudou) sem perder o cálculo de exclusão, que precisa saber o conjunto completo de ids válidos.
  */
 async function syncTable(entity, items, todosOsItens) {
-  const rows = items.map((it) => toDb(entity, it));
+  const rows = items.map((it) => toDb(entity, it, { omitirIndefinidos: true }));
   const existing = await pg.select(entity, "select=id");
   const existingIds = (existing || []).map((r) => r.id);
   const nextIds = (todosOsItens || items).map((it) => it.id);

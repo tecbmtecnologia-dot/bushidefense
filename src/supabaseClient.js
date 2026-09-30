@@ -90,12 +90,18 @@ async function pgFetch(path, options = {}) {
 
 export const pg = {
   select: (table, params = "select=*") => pgFetch(`/${table}?${params}`),
-  upsert: (table, rows) =>
-    pgFetch(`/${table}`, {
+  // As linhas podem vir com chaves diferentes (campo ausente = "use o default da coluna"):
+  // `columns` lista a união de todas as chaves e `missing=default` faz o Postgres preencher as
+  // que faltam numa linha com o DEFAULT da coluna em vez de null — senão uma coluna NOT NULL
+  // com default (ex: alunos.ajuste_aulas) quebra o cadastro inteiro.
+  upsert: (table, rows) => {
+    const colunas = [...new Set(rows.flatMap((r) => Object.keys(r)))];
+    return pgFetch(`/${table}?columns=${colunas.join(",")}`, {
       method: "POST",
-      headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+      headers: { Prefer: "resolution=merge-duplicates,missing=default,return=minimal" },
       body: JSON.stringify(rows),
-    }),
+    });
+  },
   update: (table, id, patch) =>
     pgFetch(`/${table}?id=eq.${id}`, {
       method: "PATCH",
