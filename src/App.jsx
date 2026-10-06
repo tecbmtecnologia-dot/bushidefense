@@ -187,8 +187,9 @@ function addMeses(dataStr, n) {
 function statusPagamento(aluno, planos) {
   const plano = (planos || []).find((p) => p.id === aluno.planoId);
   if (plano && Number(plano.valor) === 0) return { emDia: true, vencimento: null, plano };
-  if (!aluno.ultimoPagamento || !plano) return { emDia: false, vencimento: null, plano };
-  let vencimento = addMeses(aluno.ultimoPagamento, PERIOD_MESES[plano.periodicidade] || 1);
+  if (!aluno.ultimoPagamento) return { emDia: false, vencimento: null, plano };
+  // Sem plano (ou plano de outro professor, invisível pela RLS): o pagamento vale 1 mês.
+  let vencimento = addMeses(aluno.ultimoPagamento, PERIOD_MESES[plano?.periodicidade] || 1);
   if (aluno.diaVencimento) {
     const [y, m] = vencimento.split("-");
     vencimento = `${y}-${m}-${String(aluno.diaVencimento).padStart(2, "0")}`;
