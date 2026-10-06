@@ -197,19 +197,25 @@ function statusPagamento(aluno, planos, dataRef = null) {
   return { emDia: vencimento >= (dataRef || hoje()), vencimento, plano };
 }
 
-/* Pendentes de um mês: no mês atual (ou futuro) é a situação de hoje; num mês passado é a
-   situação no último dia daquele mês, considerando só os pagamentos feitos até ali. */
+/* Pendentes de um mês (relatórios): olha só aquele mês, não a situação de hoje. Um pagamento
+   cobre o mês em que foi feito e os seguintes conforme a periodicidade do plano (mensal = só
+   aquele mês, trimestral = 3 meses...). Pendente = aluno ativo, matriculado até o fim do mês,
+   com plano pago (ou sem plano), sem nenhum pagamento cobrindo aquele mês. */
 function pendentesNoMes(alunos, planos, mes) {
   const [y, m] = mes.split("-").map(Number);
+  const indiceMes = (ym) => { const [a, b] = ym.split("-").map(Number); return a * 12 + (b - 1); };
+  const alvo = y * 12 + (m - 1);
   const fimMes = `${mes}-${String(new Date(y, m, 0).getDate()).padStart(2, "0")}`;
-  if (fimMes >= hoje()) return alunos.filter((a) => !statusPagamento(a, planos).emDia);
   return alunos.filter((a) => {
+    if (a.ativo === false) return false;
     if (a.matricula && a.matricula > fimMes) return false;
-    const ultimoAteFimMes = (a.pagamentos || []).map((p) => p.data).filter((d) => d <= fimMes).sort().pop() || null;
-    return !statusPagamento({ ...a, ultimoPagamento: ultimoAteFimMes }, planos, fimMes).emDia;
+    const plano = (planos || []).find((p) => p.id === a.planoId);
+    if (plano && Number(plano.valor) === 0) return false;
+    const meses = PERIOD_MESES[plano?.periodicidade] || 1;
+    const coberto = (a.pagamentos || []).some((p) => { const i = indiceMes(p.data.slice(0, 7)); return i <= alvo && alvo < i + meses; });
+    return !coberto;
   });
 }
-const mesJaPassou = (mes) => mes < hoje().slice(0, 7);
 
 async function darBaixaEm(data, save, alunoId, valorProdutos = 0, valorPagoCustom = null, dataPagamento = null) {
   // dataPagamento permite lançar pagamento retroativo (ex.: mês anterior); nunca no futuro.
@@ -2760,14 +2766,14 @@ function PagamentosChart({ data, alunosFiltro, dark = false }) {
   const [mes, setMes] = useState(() => new Date().toISOString().slice(0, 7));
   const confirmadosMes = alunosBase.flatMap((a) => (a.pagamentos || []).filter((p) => p.data.slice(0, 7) === mes));
   const totalConfirmado = confirmadosMes.reduce((s, p) => s + (p.valor || 0), 0);
-  // Mês atual: quem está em atraso agora. Mês passado: quem estava em atraso no fim daquele mês.
+  // Só aquele mês: quem não tem pagamento cobrindo o mês selecionado (ver pendentesNoMes).
   const pendentesAtuais = pendentesNoMes(alunosBase, data.planos, mes);
   const totalPendente = pendentesAtuais.reduce((s, a) => s + (data.planos.find((p) => p.id === a.planoId)?.valor || 0), 0);
   const corConfirmado = light ? LIGHT.good : "#4ADE80";
   const corPendente = light ? LIGHT.bad : "#FF6B6B";
   const dadosGrafico = [
     { name: "Confirmados no mês", value: confirmadosMes.length, color: corConfirmado },
-    { name: mesJaPassou(mes) ? "Pendentes no fim do mês" : "Pendentes agora", value: pendentesAtuais.length, color: corPendente },
+    { name: "Pendentes no mês", value: pendentesAtuais.length, color: corPendente },
   ].filter((d) => d.value > 0);
   const totalGrafico = dadosGrafico.reduce((s, d) => s + d.value, 0);
 
@@ -2778,7 +2784,7 @@ function PagamentosChart({ data, alunosFiltro, dark = false }) {
         <input type="month" style={{ ...(dark ? inputStyleDark : inputStyle), maxWidth: 170 }} value={mes} onChange={(e) => setMes(e.target.value)} />
       </div>
       {dadosGrafico.length === 0 ? (
-        <Empty dark={dark}>Sem pagamentos confirmados neste mês nem pendências no momento.</Empty>
+        <Empty dark={dark}>Sem pagamentos confirmados nem pendências neste mês.</Empty>
       ) : light ? (
         (() => {
           let acumulado = 0;
@@ -2825,7 +2831,7 @@ function PagamentosChart({ data, alunosFiltro, dark = false }) {
           <div style={{ fontFamily: "Oswald", fontSize: 22, fontWeight: 700, color: corConfirmado }}>R$ {totalConfirmado.toFixed(2)}</div>
         </div>
         <div>
-          <div style={{ fontSize: 11.5, color: dark ? "#9B9891" : "#8A8574", fontWeight: 600, textTransform: "uppercase" }}>{mesJaPassou(mes) ? "Total pendente no fim do mês" : "Total pendente agora"}</div>
+          <div style={{ fontSize: 11.5, color: dark ? "#9B9891" : "#8A8574", fontWeight: 600, textTransform: "uppercase" }}>Total pendente no mês</div>
           <div style={{ fontFamily: "Oswald", fontSize: 22, fontWeight: 700, color: corPendente }}>R$ {totalPendente.toFixed(2)}</div>
         </div>
       </div>
@@ -2995,7 +3001,6 @@ function gerarRelatorioMensal(data, mes, onErro, alunosFiltro, tituloExtra) {
   const totalConfirmado = confirmadosMes.reduce((s, p) => s + (p.valor || 0), 0);
   const pendentesAtuais = pendentesNoMes(alunosBase, data.planos, mes);
   const totalPendente = pendentesAtuais.reduce((s, a) => s + (data.planos.find((p) => p.id === a.planoId)?.valor || 0), 0);
-  const passado = mesJaPassou(mes);
   const [ano, mesNum] = mes.split("-");
   const nomeMes = MESES[Number(mesNum) - 1];
 
@@ -3005,11 +3010,11 @@ function gerarRelatorioMensal(data, mes, onErro, alunosFiltro, tituloExtra) {
 
   const linhasPendentes = pendentesAtuais
     .map((a) => { const plano = data.planos.find((p) => p.id === a.planoId); return `<tr><td>${a.nome}</td><td>${plano?.nome || "—"}</td><td>R$ ${(plano?.valor || 0).toFixed(2)}</td></tr>`; })
-    .join("") || `<tr><td colspan="3">${passado ? "Nenhuma pendência no fim deste mês." : "Nenhuma pendência no momento."}</td></tr>`;
+    .join("") || `<tr><td colspan="3">Nenhuma pendência neste mês.</td></tr>`;
 
   const dadosPagamentos = [
     { nome: "Confirmados no mês", valor: confirmadosMes.length, cor: "#4ADE80" },
-    { nome: passado ? "Pendentes no fim do mês" : "Pendentes agora", valor: pendentesAtuais.length, cor: "#FF6B6B" },
+    { nome: "Pendentes no mês", valor: pendentesAtuais.length, cor: "#FF6B6B" },
   ].filter((d) => d.valor > 0);
   const graficoPagamentosHtml = dadosPagamentos.length
     ? `<div class="section-title">Pagamentos confirmados x pendentes</div>
@@ -3028,12 +3033,12 @@ function gerarRelatorioMensal(data, mes, onErro, alunosFiltro, tituloExtra) {
           <div class="stat"><div class="label">Pagamentos confirmados</div><div class="value">${confirmadosMes.length}</div></div>
           <div class="stat"><div class="label">Pagamentos pendentes</div><div class="value">${pendentesAtuais.length}</div></div>
           <div class="stat"><div class="label">Receita recebida no mês</div><div class="value">R$ ${totalConfirmado.toFixed(2)}</div></div>
-          <div class="stat"><div class="label">${passado ? "Receita pendente no fim do mês" : "Receita pendente agora"}</div><div class="value">R$ ${totalPendente.toFixed(2)}</div></div>
+          <div class="stat"><div class="label">Receita pendente no mês</div><div class="value">R$ ${totalPendente.toFixed(2)}</div></div>
         </div>
         ${graficoPagamentosHtml}
         <div class="section-title">Pagamentos confirmados no mês</div>
         <table><thead><tr><th>Aluno</th><th>Data</th><th>Valor</th></tr></thead><tbody>${linhasConfirmados}</tbody></table>
-        <div class="section-title">${passado ? "Pagamentos pendentes no fim do mês" : "Pagamentos pendentes atualmente"}</div>
+        <div class="section-title">Pagamentos pendentes no mês</div>
         <table><thead><tr><th>Aluno</th><th>Plano</th><th>Valor</th></tr></thead><tbody>${linhasPendentes}</tbody></table>
         ${rodapeRelatorioModerno()}
       </div>
