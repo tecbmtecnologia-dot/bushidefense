@@ -196,15 +196,19 @@ function statusPagamento(aluno, planos) {
   return { emDia: vencimento >= hoje(), vencimento, plano };
 }
 
-async function darBaixaEm(data, save, alunoId, valorProdutos = 0, valorPagoCustom = null) {
+async function darBaixaEm(data, save, alunoId, valorProdutos = 0, valorPagoCustom = null, dataPagamento = null) {
+  // dataPagamento permite lançar pagamento retroativo (ex.: mês anterior); nunca no futuro.
+  const dataPag = dataPagamento && dataPagamento <= hoje() ? dataPagamento : hoje();
   const alunos = data.alunos.map((a) => {
     if (a.id !== alunoId) return a;
     const plano = data.planos.find((p) => p.id === a.planoId);
     const valorMensalidade = valorPagoCustom != null ? Number(valorPagoCustom) || 0 : (plano?.valor || 0);
     const extra = Number(valorProdutos) || 0;
-    const pagamento = { id: uid(), data: hoje(), valor: valorMensalidade + extra, valorMensalidade, valorProdutos: extra };
+    const pagamento = { id: uid(), data: dataPag, valor: valorMensalidade + extra, valorMensalidade, valorProdutos: extra };
     const pagamentos = [...(a.pagamentos || []), pagamento];
-    return { ...a, ultimoPagamento: hoje(), pagamentos };
+    // Um lançamento retroativo não pode "voltar" o último pagamento se já existe um mais recente.
+    const ultimoPagamento = a.ultimoPagamento && a.ultimoPagamento > dataPag ? a.ultimoPagamento : dataPag;
+    return { ...a, ultimoPagamento, pagamentos };
   });
   await save({ ...data, alunos });
   notificarPush("Pagamento confirmado!", "Sua mensalidade foi confirmada. Obrigado! 🥋", { alunoId });
@@ -984,7 +988,14 @@ function ConfirmButton({ onConfirm, children, icon = Check, variant = "primary",
   );
 }
 
-function DarBaixaControle({ plano, mensalidade, onConfirmar, dark = true }) {
+function mesmoDiaMesAnterior() {
+  const d = new Date();
+  const ultimoDiaMesAnterior = new Date(d.getFullYear(), d.getMonth(), 0).getDate();
+  const ant = new Date(d.getFullYear(), d.getMonth() - 1, Math.min(d.getDate(), ultimoDiaMesAnterior));
+  return `${ant.getFullYear()}-${String(ant.getMonth() + 1).padStart(2, "0")}-${String(ant.getDate()).padStart(2, "0")}`;
+}
+
+function DarBaixaControle({ plano, mensalidade, onConfirmar, dark = true, retroativo = false }) {
   const light = useDesktopLight();
   const escuro = dark && !light;
   const [aberto, setAberto] = useState(false);
@@ -993,6 +1004,8 @@ function DarBaixaControle({ plano, mensalidade, onConfirmar, dark = true }) {
   const valorPadrao = mensalidade != null ? Number(mensalidade) || 0 : Number(plano?.valor) || 0;
   const [horas, setHoras] = useState("");
   const [valorPago, setValorPago] = useState(valorPadrao ? String(valorPadrao) : "");
+  const [dataPagamento, setDataPagamento] = useState(retroativo ? mesmoDiaMesAnterior() : hoje());
+  const ghostBotao = escuro ? { color: "#FFFFFF", border: "1px solid rgba(255,255,255,0.2)" } : ghostEscuroFallback(light);
   const total = (Number(valorPago) || 0) + (Number(produtos) || 0);
   const labelColor = escuro ? "#C9C4B4" : (light ? LIGHT.muted : undefined);
   const inputBase = escuro ? inputStyleDark : inputStyle;
@@ -1003,6 +1016,7 @@ function DarBaixaControle({ plano, mensalidade, onConfirmar, dark = true }) {
   };
 
   if (!aberto) {
+    if (retroativo) return <Button variant="ghost" style={ghostBotao} onClick={() => setAberto(true)}>Lançar retroativo</Button>;
     return <Button variant="gold" onClick={() => setAberto(true)}>Dar baixa</Button>;
   }
 
@@ -1013,6 +1027,13 @@ function DarBaixaControle({ plano, mensalidade, onConfirmar, dark = true }) {
           <input type="number" min="0" step="0.5" style={inputBase} value={horas} onChange={(e) => aplicarHoras(e.target.value)} placeholder="0" />
         </Field>
       )}
+      <Field label="Data do pagamento" labelColor={labelColor}>
+        <input type="date" max={hoje()} style={inputBase} value={dataPagamento} onChange={(e) => setDataPagamento(e.target.value)} />
+      </Field>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: -4 }}>
+        <Button variant="ghost" style={{ ...ghostBotao, padding: "4px 10px", fontSize: 12 }} onClick={() => setDataPagamento(hoje())}>Hoje</Button>
+        <Button variant="ghost" style={{ ...ghostBotao, padding: "4px 10px", fontSize: 12 }} onClick={() => setDataPagamento(mesmoDiaMesAnterior())}>Mês anterior</Button>
+      </div>
       <Field label="Valor total pago (R$)" labelColor={labelColor}>
         <input type="number" min="0" step="0.01" style={inputBase} value={valorPago} onChange={(e) => setValorPago(e.target.value)} placeholder="0,00" />
       </Field>
@@ -1023,7 +1044,7 @@ function DarBaixaControle({ plano, mensalidade, onConfirmar, dark = true }) {
         Valor pago R$ {(Number(valorPago) || 0).toFixed(2)}{Number(produtos) > 0 ? ` + produtos R$ ${Number(produtos).toFixed(2)}` : ""} = <strong style={{ color: "#C9A227" }}>Total R$ {total.toFixed(2)}</strong>
       </div>
       <div style={{ display: "flex", gap: 8 }}>
-        <ConfirmButton dark={dark} onConfirm={() => { onConfirmar(Number(produtos) || 0, Number(valorPago) || 0); setAberto(false); setProdutos(""); }}>Confirmar pagamento</ConfirmButton>
+        <ConfirmButton dark={dark} onConfirm={() => { onConfirmar(Number(produtos) || 0, Number(valorPago) || 0, dataPagamento || hoje()); setAberto(false); setProdutos(""); }}>Confirmar pagamento</ConfirmButton>
         <Button variant="ghost" style={escuro ? { color: "#FFFFFF", border: "1px solid rgba(255,255,255,0.2)" } : ghostEscuroFallback(light)} onClick={() => { setAberto(false); setProdutos(""); }}>Cancelar</Button>
       </div>
     </div>
@@ -1393,6 +1414,7 @@ function RelatoriosProfessor({ data, prof, meusAlunos }) {
   const [ordemFrequencia, setOrdemFrequencia] = useState("mais");
   const [dataCheckins, setDataCheckins] = useState(hoje());
   const [mesFinanceiro, setMesFinanceiro] = useState(() => new Date().toISOString().slice(0, 7));
+  const [anoFinanceiro, setAnoFinanceiro] = useState(() => String(new Date().getFullYear()));
   const [mesAniversario, setMesAniversario] = useState(new Date().getMonth());
   const [erro, setErro] = useState("");
   const secaoRef = useRef(null);
@@ -1476,6 +1498,14 @@ function RelatoriosProfessor({ data, prof, meusAlunos }) {
           </CartaoRelatorio>
         )}
 
+        {visivel("financeiro", "Relatório anual") && (
+          <CartaoRelatorio dark corIcone="#F1EAFF" icone="📅" tag="Financeiro" titulo="Relatório anual"
+            descricao="Receita do ano dos seus alunos, mês a mês e por aluno." botao={{ variant: "gold" }}
+            onClick={() => { setErro(""); gerarRelatorioAnual(data, anoFinanceiro, setErro, meusAlunos, prof.nome); }}>
+            <input type="number" min="2000" max="2100" style={{ ...inputStyle, maxWidth: "100%" }} value={anoFinanceiro} onChange={(e) => setAnoFinanceiro(e.target.value)} placeholder="2026" />
+          </CartaoRelatorio>
+        )}
+
         {visivel("financeiro", "Pagamentos: confirmados x pendentes") && (
           <CartaoRelatorio dark corIcone="#F1EAFF" icone="📈" tag="Financeiro" titulo="Pagamentos: confirmados x pendentes"
             descricao="Gráfico comparando os dois grupos, só dos seus alunos." botao={{ variant: "gold", texto: "Ver gráfico" }}
@@ -1547,6 +1577,7 @@ function RelatoriosAdmin({ data }) {
   const [ordemFrequencia, setOrdemFrequencia] = useState("mais");
   const [dataCheckins, setDataCheckins] = useState(hoje());
   const [mesFinanceiro, setMesFinanceiro] = useState(() => new Date().toISOString().slice(0, 7));
+  const [anoFinanceiro, setAnoFinanceiro] = useState(() => String(new Date().getFullYear()));
   const [mesAniversario, setMesAniversario] = useState(new Date().getMonth());
   const [erro, setErro] = useState("");
   const [tipoPeriodoResumo, setTipoPeriodoResumo] = useState("dia");
@@ -1673,6 +1704,14 @@ function RelatoriosAdmin({ data }) {
             descricao="Pagamentos confirmados e pendências do mês selecionado." botao={{ variant: "gold" }}
             onClick={() => { setErro(""); gerarRelatorioMensal(data, mesFinanceiro, setErro); }}>
             <input type="month" style={{ ...inputStyle, maxWidth: "100%" }} value={mesFinanceiro} onChange={(e) => setMesFinanceiro(e.target.value)} />
+          </CartaoRelatorio>
+        )}
+
+        {visivel("financeiro", "Relatório anual") && (
+          <CartaoRelatorio corIcone="#F1EAFF" icone="📅" tag="Financeiro" titulo="Relatório anual"
+            descricao="Receita do ano inteiro, mês a mês e por aluno." botao={{ variant: "gold" }}
+            onClick={() => { setErro(""); gerarRelatorioAnual(data, anoFinanceiro, setErro); }}>
+            <input type="number" min="2000" max="2100" style={{ ...inputStyle, maxWidth: "100%" }} value={anoFinanceiro} onChange={(e) => setAnoFinanceiro(e.target.value)} placeholder="2026" />
           </CartaoRelatorio>
         )}
 
@@ -2987,6 +3026,72 @@ function gerarRelatorioMensal(data, mes, onErro, alunosFiltro, tituloExtra) {
   abrirJanelaRelatorio(html, onErro);
 }
 
+function gerarRelatorioAnual(data, ano, onErro, alunosFiltro, tituloExtra) {
+  const alunosBase = alunosFiltro || data.alunos;
+  const anoStr = String(ano);
+  const pagamentosAno = alunosBase.flatMap((a) => (a.pagamentos || []).filter((p) => p.data.slice(0, 4) === anoStr).map((p) => ({ ...p, alunoId: a.id, alunoNome: a.nome })));
+  const totalAno = pagamentosAno.reduce((s, p) => s + (p.valor || 0), 0);
+
+  const porMes = MESES.map((nome, i) => {
+    const chave = `${anoStr}-${String(i + 1).padStart(2, "0")}`;
+    const doMes = pagamentosAno.filter((p) => p.data.slice(0, 7) === chave);
+    return { nome, qtd: doMes.length, total: doMes.reduce((s, p) => s + (p.valor || 0), 0) };
+  });
+  const mesesComReceita = porMes.filter((m) => m.total > 0).length;
+  const mediaMensal = mesesComReceita ? totalAno / mesesComReceita : 0;
+  const maiorMes = Math.max(0, ...porMes.map((m) => m.total));
+
+  const barrasHtml = porMes.map((m) => {
+    const largura = maiorMes ? Math.round((m.total / maiorMes) * 100) : 0;
+    return `<div style="display:flex;align-items:center;gap:8px;margin:4px 0;font-size:12px;">
+      <div style="width:78px;">${m.nome}</div>
+      <div style="flex:1;background:rgba(0,0,0,0.06);border-radius:4px;height:14px;"><div style="width:${largura}%;background:#C9A227;height:14px;border-radius:4px;"></div></div>
+      <div style="width:90px;text-align:right;">R$ ${m.total.toFixed(2)}</div>
+    </div>`;
+  }).join("");
+
+  const linhasMeses = porMes
+    .map((m) => `<tr><td>${m.nome}</td><td>${m.qtd}</td><td>R$ ${m.total.toFixed(2)}</td></tr>`)
+    .join("") + `<tr><td><strong>Total</strong></td><td><strong>${pagamentosAno.length}</strong></td><td><strong>R$ ${totalAno.toFixed(2)}</strong></td></tr>`;
+
+  const porAluno = {};
+  pagamentosAno.forEach((p) => {
+    if (!porAluno[p.alunoId]) porAluno[p.alunoId] = { nome: p.alunoNome, qtd: 0, total: 0, meses: new Set() };
+    porAluno[p.alunoId].qtd += 1;
+    porAluno[p.alunoId].total += p.valor || 0;
+    porAluno[p.alunoId].meses.add(Number(p.data.slice(5, 7)));
+  });
+  const linhasAlunos = Object.values(porAluno)
+    .sort((x, y) => y.total - x.total)
+    .map((a) => `<tr><td>${a.nome}</td><td>${[...a.meses].sort((x, y) => x - y).map((m) => MESES[m - 1].slice(0, 3)).join(", ")}</td><td>${a.qtd}</td><td>R$ ${a.total.toFixed(2)}</td></tr>`)
+    .join("") || `<tr><td colspan="4">Nenhum pagamento registrado neste ano.</td></tr>`;
+
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Relatório anual ${anoStr}</title>
+    <style>${estiloRelatorioModerno()}</style></head>
+    <body>
+      ${marcaDaguaRelatorio(data)}
+      <button class="voltar-btn" onclick="window.close()">← Voltar para o app</button>
+      ${cabecalhoRelatorioModerno(data, "Relatório financeiro anual" + (tituloExtra ? " — " + tituloExtra : ""), `Ano de ${anoStr}`)}
+      <div class="conteudo">
+        <div class="stats">
+          <div class="stat"><div class="label">Receita no ano</div><div class="value">R$ ${totalAno.toFixed(2)}</div></div>
+          <div class="stat"><div class="label">Pagamentos confirmados</div><div class="value">${pagamentosAno.length}</div></div>
+          <div class="stat"><div class="label">Alunos que pagaram</div><div class="value">${Object.keys(porAluno).length}</div></div>
+          <div class="stat"><div class="label">Média por mês (com receita)</div><div class="value">R$ ${mediaMensal.toFixed(2)}</div></div>
+        </div>
+        <div class="section-title">Receita mês a mês</div>
+        ${barrasHtml}
+        <div class="section-title">Resumo por mês</div>
+        <table><thead><tr><th>Mês</th><th>Pagamentos</th><th>Receita</th></tr></thead><tbody>${linhasMeses}</tbody></table>
+        <div class="section-title">Pagamentos por aluno</div>
+        <table><thead><tr><th>Aluno</th><th>Meses pagos</th><th>Pagamentos</th><th>Total</th></tr></thead><tbody>${linhasAlunos}</tbody></table>
+        ${rodapeRelatorioModerno()}
+      </div>
+    </body></html>`;
+
+  abrirJanelaRelatorio(html, onErro);
+}
+
 function RelatorioMensal({ data }) {
   const light = useDesktopLight();
   const [mes, setMes] = useState(() => new Date().toISOString().slice(0, 7));
@@ -3994,7 +4099,7 @@ function RelatorioMensalProfessor({ data, prof, dark = true }) {
 
 function FinanceiroAdmin({ data, save }) {
   const light = useDesktopLight();
-  const darBaixa = (alunoId, valorProdutos, valorPago) => darBaixaEm(data, save, alunoId, valorProdutos, valorPago);
+  const darBaixa = (alunoId, valorProdutos, valorPago, dataPagamento) => darBaixaEm(data, save, alunoId, valorProdutos, valorPago, dataPagamento);
   const desfazerBaixa = (alunoId) => desfazerBaixaEm(data, save, alunoId);
   const pendentes = data.alunos.filter((a) => !statusPagamento(a, data.planos).emDia);
   const pagamentosRecentes = data.alunos.flatMap((a) => (a.pagamentos || []).map((p) => ({ ...p, alunoId: a.id, alunoNome: a.nome }))).sort((x, y) => y.data.localeCompare(x.data)).slice(0, 40);
@@ -4019,7 +4124,7 @@ function FinanceiroAdmin({ data, save }) {
                 <div style={{ fontWeight: 600, fontSize: 14, color: light ? LIGHT.text : "#F5F3EC" }}>{a.nome}</div>
                 <div style={{ fontSize: 12, color: light ? LIGHT.muted : "#9B9891" }}>{plano?.nome || "sem plano"} · R$ {plano?.valor ?? 0} {vencimento && `· venceu em ${new Date(vencimento + "T00:00:00").toLocaleDateString("pt-BR")}`}</div>
               </div>
-              <DarBaixaControle plano={plano} onConfirmar={(valorProdutos, valorPago) => darBaixa(a.id, valorProdutos, valorPago)} />
+              <DarBaixaControle plano={plano} onConfirmar={(valorProdutos, valorPago, dataPagamento) => darBaixa(a.id, valorProdutos, valorPago, dataPagamento)} />
             </Card>
           );
         })}
@@ -5507,7 +5612,8 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
                         <div style={tituloSecaoStyle}>💰 Financeiro — {plano?.nome || "sem plano"}</div>
                         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                           <Tag ok={emDia}>{emDia ? "Em dia" : "Pendente"}</Tag>
-                          {!emDia && <DarBaixaControle plano={plano} onConfirmar={(valorProdutos, valorPago) => darBaixaPagamento(a.id, valorProdutos, valorPago)} />}
+                          {!emDia && <DarBaixaControle plano={plano} onConfirmar={(valorProdutos, valorPago, dataPagamento) => darBaixaPagamento(a.id, valorProdutos, valorPago, dataPagamento)} />}
+                          {emDia && <DarBaixaControle retroativo plano={plano} onConfirmar={(valorProdutos, valorPago, dataPagamento) => darBaixaPagamento(a.id, valorProdutos, valorPago, dataPagamento)} />}
                           {emDia && (a.pagamentos || []).length > 0 && <Button variant="ghost" onClick={() => desfazerBaixaPagamento(a.id)} style={ghostEscuro}>Desfazer baixa</Button>}
                         </div>
                       </div>
@@ -5905,7 +6011,7 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
     });
     await save({ ...data, alunos });
   };
-  const darBaixaPagamento = (alunoId, valorProdutos, valorPago) => darBaixaEm(data, save, alunoId, valorProdutos, valorPago);
+  const darBaixaPagamento = (alunoId, valorProdutos, valorPago, dataPagamento) => darBaixaEm(data, save, alunoId, valorProdutos, valorPago, dataPagamento);
   const desfazerBaixaPagamento = (alunoId) => desfazerBaixaEm(data, save, alunoId);
 
   const checkinsSessao = sessaoAtiva ? data.checkins.filter((c) => c.sessaoId === sessaoAtiva.id) : [];
@@ -6124,7 +6230,8 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
                         <div style={tituloSecaoStyle}>💰 Financeiro — {plano?.nome || "sem plano"}</div>
                         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                           <Tag ok={emDia}>{emDia ? "Em dia" : "Pendente"}</Tag>
-                          {!emDia && <DarBaixaControle plano={plano} onConfirmar={(valorProdutos, valorPago) => darBaixaPagamento(a.id, valorProdutos, valorPago)} />}
+                          {!emDia && <DarBaixaControle plano={plano} onConfirmar={(valorProdutos, valorPago, dataPagamento) => darBaixaPagamento(a.id, valorProdutos, valorPago, dataPagamento)} />}
+                          {emDia && <DarBaixaControle retroativo plano={plano} onConfirmar={(valorProdutos, valorPago, dataPagamento) => darBaixaPagamento(a.id, valorProdutos, valorPago, dataPagamento)} />}
                           {emDia && (a.pagamentos || []).length > 0 && <Button variant="ghost" style={ghostDark} onClick={() => desfazerBaixaPagamento(a.id)}>Desfazer baixa</Button>}
                         </div>
                       </div>
