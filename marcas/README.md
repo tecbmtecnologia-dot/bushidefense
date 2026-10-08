@@ -5,6 +5,7 @@ O mesmo código atende várias academias. Cada uma tem uma pasta aqui com:
 | Arquivo | Para quê |
 |---|---|
 | `marca.json` | Nome, cores, nome da sede, senha padrão do aluno, e-mail, foro |
+| `simbolo.png` | Só o símbolo, sem texto — usado no cabeçalho (34px) quando a academia não enviou logo pelo painel |
 | `logo-circular.png` | Logo usada no login, no cronômetro e nos relatórios (quando a academia ainda não enviou a sua pelo painel) |
 | `favicon.jpg` | Ícone da aba do navegador |
 | `icon-192.png`, `icon-512.png` | Ícone do app instalado no celular |

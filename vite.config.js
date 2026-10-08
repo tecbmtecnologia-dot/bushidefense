@@ -10,7 +10,7 @@ function marcaPlugin(slug) {
   const dir = resolve(__dirname, "marcas", slug);
   const marca = JSON.parse(readFileSync(resolve(dir, "marca.json"), "utf8"));
   const logoCircular = "data:image/png;base64," + readFileSync(resolve(dir, "logo-circular.png")).toString("base64");
-  const logoIcone = "data:image/png;base64," + readFileSync(resolve(dir, "icon-192.png")).toString("base64");
+  const logoIcone = "data:image/png;base64," + readFileSync(resolve(dir, "simbolo.png")).toString("base64");
 
   const icones = [
     { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
