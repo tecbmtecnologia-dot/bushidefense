@@ -11,6 +11,7 @@ function marcaPlugin(slug) {
   const marca = JSON.parse(readFileSync(resolve(dir, "marca.json"), "utf8"));
   const logoCircular = "data:image/png;base64," + readFileSync(resolve(dir, "logo-circular.png")).toString("base64");
   const logoIcone = "data:image/png;base64," + readFileSync(resolve(dir, "simbolo.png")).toString("base64");
+  const logoFundo = "data:image/png;base64," + readFileSync(resolve(dir, "fundo.png")).toString("base64");
 
   const icones = [
     { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
@@ -43,7 +44,7 @@ function marcaPlugin(slug) {
     name: "marca",
     resolveId(id) { if (id === ID_VIRTUAL) return "\0" + ID_VIRTUAL; },
     load(id) {
-      if (id === "\0" + ID_VIRTUAL) return `export const MARCA = ${JSON.stringify(marca)};\nexport const LOGO_CIRCULAR = ${JSON.stringify(logoCircular)};\nexport const LOGO_ICONE = ${JSON.stringify(logoIcone)};\n`;
+      if (id === "\0" + ID_VIRTUAL) return `export const MARCA = ${JSON.stringify(marca)};\nexport const LOGO_CIRCULAR = ${JSON.stringify(logoCircular)};\nexport const LOGO_ICONE = ${JSON.stringify(logoIcone)};\nexport const LOGO_FUNDO = ${JSON.stringify(logoFundo)};\n`;
     },
     transformIndexHtml: {
       order: "pre",
