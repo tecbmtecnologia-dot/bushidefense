@@ -2237,7 +2237,8 @@ function StatCard({ label, value, icon: Icon, dark = false, accent, chipBg, chip
   );
 }
 
-function PersonForm({ tipo, initial, planos, faixas, professores, unidades, turmas, onSave, onCancel }) {
+// unidadeFixa: quando o professor cadastra/edita um aluno, a unidade fica travada na dele.
+function PersonForm({ tipo, initial, planos, faixas, professores, unidades, unidadeFixa, turmas, onSave, onCancel }) {
   const i = initial || {};
   const [nome, setNome] = useState(i.nome || "");
   const [email, setEmail] = useState(i.email || "");
@@ -2256,7 +2257,7 @@ function PersonForm({ tipo, initial, planos, faixas, professores, unidades, turm
   const [professorId, setProfessorId] = useState(i.professorId || "");
   const [peso, setPeso] = useState(i.peso ?? "");
   const [apelido, setApelido] = useState(i.apelido || "");
-  const [unidadeId, setUnidadeId] = useState(i.unidadeId || "");
+  const [unidadeId, setUnidadeId] = useState(unidadeFixa !== undefined ? (unidadeFixa?.id || "") : (i.unidadeId || ""));
   const [turmaId, setTurmaId] = useState(i.turmaId || "");
 
   const faixaSelecionada = (faixas || []).find((f) => f.id === faixaId);
@@ -2318,12 +2319,19 @@ function PersonForm({ tipo, initial, planos, faixas, professores, unidades, turm
                 {(professores || []).map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
               </select>
             </Field>
-            <Field label="Unidade de treino">
-              <select style={inputStyle} value={unidadeId} onChange={(e) => setUnidadeId(e.target.value)}>
-                <option value="">QG (padrão)</option>
-                {(unidades || []).map((u) => <option key={u.id} value={u.id}>{u.nome}</option>)}
-              </select>
-            </Field>
+            {unidadeFixa !== undefined ? (
+              <Field label="Unidade de treino">
+                <div style={{ ...inputStyle, background: "#F0EDE3", color: "#5A5648", display: "flex", alignItems: "center" }}>{unidadeFixa ? unidadeFixa.nome : "QG (padrão)"}</div>
+                <p style={{ fontSize: 11, color: "#8A8574", marginTop: 4 }}>Você só pode cadastrar alunos pra sua própria unidade. Se isso estiver errado, peça pra administração ajustar a unidade no seu cadastro.</p>
+              </Field>
+            ) : (
+              <Field label="Unidade de treino">
+                <select style={inputStyle} value={unidadeId} onChange={(e) => setUnidadeId(e.target.value)}>
+                  <option value="">QG (padrão)</option>
+                  {(unidades || []).map((u) => <option key={u.id} value={u.id}>{u.nome}</option>)}
+                </select>
+              </Field>
+            )}
             <Field label="Turma vinculada (aula particular)">
               <select style={inputStyle} value={turmaId} onChange={(e) => setTurmaId(e.target.value)}>
                 <option value="">Nenhuma — segue a grade normal</option>
@@ -5580,10 +5588,10 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
           {erroRelatorioAlunos && <div style={{ marginBottom: 10, fontSize: 12.5, color: "#FF8A80", fontWeight: 600 }}>{erroRelatorioAlunos}</div>}
           {!sessaoAtiva && <p style={{ fontSize: 12, color: light ? LIGHT.muted : "#9B9891", marginTop: 0 }}>Inicie a aula na aba Início para poder marcar presença manualmente.</p>}
           {novoAluno && (
-            <PersonForm tipo="aluno" planos={data.planos.filter((p) => !p.professorId || p.professorId === prof.id)} faixas={data.faixas} professores={data.professores} unidades={data.unidades} turmas={data.turmas} initial={{ professorId: prof.id }} onCancel={() => setNovoAluno(false)} onSave={addAlunoProf} />
+            <PersonForm tipo="aluno" planos={data.planos.filter((p) => !p.professorId || p.professorId === prof.id)} faixas={data.faixas} professores={data.professores} unidadeFixa={(data.unidades || []).find((u) => u.id === prof.unidadeId) || null} turmas={data.turmas} initial={{ professorId: prof.id }} onCancel={() => setNovoAluno(false)} onSave={addAlunoProf} />
           )}
           {editandoAluno && (
-            <PersonForm tipo="aluno" planos={data.planos.filter((p) => !p.professorId || p.professorId === prof.id)} faixas={data.faixas} professores={data.professores} unidades={data.unidades} turmas={data.turmas} initial={editandoAluno} onCancel={() => setEditandoAluno(null)} onSave={(form) => editarAlunoProf(editandoAluno.id, form)} />
+            <PersonForm tipo="aluno" planos={data.planos.filter((p) => !p.professorId || p.professorId === prof.id)} faixas={data.faixas} professores={data.professores} unidadeFixa={(data.unidades || []).find((u) => u.id === prof.unidadeId) || null} turmas={data.turmas} initial={editandoAluno} onCancel={() => setEditandoAluno(null)} onSave={(form) => editarAlunoProf(editandoAluno.id, form)} />
           )}
           <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
             <input style={{ ...inputStyle, flex: 1, minWidth: 160 }} placeholder="Buscar por nome ou apelido..." value={buscaAluno} onChange={(e) => setBuscaAluno(e.target.value)} />
@@ -6177,10 +6185,10 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
           {!sessaoAtiva && <p style={{ fontSize: 12, color: "#9B9891", marginTop: 0 }}>Inicie a aula na página Início para poder marcar presença manualmente.</p>}
           <RelatorioListaAlunosProfessor data={data} prof={prof} />
           {novoAluno && (
-            <PersonForm tipo="aluno" planos={data.planos.filter((p) => !p.professorId || p.professorId === prof.id)} faixas={data.faixas} professores={data.professores} unidades={data.unidades} turmas={data.turmas} initial={{ professorId: prof.id }} onCancel={() => setNovoAluno(false)} onSave={addAlunoProf} />
+            <PersonForm tipo="aluno" planos={data.planos.filter((p) => !p.professorId || p.professorId === prof.id)} faixas={data.faixas} professores={data.professores} unidadeFixa={(data.unidades || []).find((u) => u.id === prof.unidadeId) || null} turmas={data.turmas} initial={{ professorId: prof.id }} onCancel={() => setNovoAluno(false)} onSave={addAlunoProf} />
           )}
           {editandoAluno && (
-            <PersonForm tipo="aluno" planos={data.planos.filter((p) => !p.professorId || p.professorId === prof.id)} faixas={data.faixas} professores={data.professores} unidades={data.unidades} turmas={data.turmas} initial={editandoAluno} onCancel={() => setEditandoAluno(null)} onSave={(form) => editarAlunoProf(editandoAluno.id, form)} />
+            <PersonForm tipo="aluno" planos={data.planos.filter((p) => !p.professorId || p.professorId === prof.id)} faixas={data.faixas} professores={data.professores} unidadeFixa={(data.unidades || []).find((u) => u.id === prof.unidadeId) || null} turmas={data.turmas} initial={editandoAluno} onCancel={() => setEditandoAluno(null)} onSave={(form) => editarAlunoProf(editandoAluno.id, form)} />
           )}
           <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
             <input style={{ ...inputStyleDark, flex: 1, minWidth: 160 }} placeholder="Buscar por nome ou apelido..." value={buscaAluno} onChange={(e) => setBuscaAluno(e.target.value)} />
