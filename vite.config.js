@@ -1,7 +1,8 @@
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import { resolve } from "path";
-import { readFileSync } from "fs";
+import { readFileSync, existsSync } from "fs";
+import { createHash } from "crypto";
 
 // Cada academia é uma "marca" em marcas/<slug>/ (marca.json + ícones + logo). O deploy escolhe
 // qual usar pela variável VITE_MARCA (no Netlify: Site settings > Environment variables).
@@ -37,6 +38,13 @@ function marcaPlugin(slug) {
   for (const f of ["favicon.jpg", "icon-192.png", "icon-192-maskable.png", "icon-512.png", "icon-512-maskable.png"]) {
     arquivos[f] = () => readFileSync(resolve(dir, f));
   }
+  // Grade de horários em imagem (opcional): se a marca tiver grade-horarios.jpg, o app do aluno
+  // mostra essa imagem (com zoom) em vez da lista de turmas. O ?v= muda quando a imagem muda.
+  let gradeHorarios = null;
+  if (existsSync(resolve(dir, "grade-horarios.jpg"))) {
+    arquivos["grade-horarios.jpg"] = () => readFileSync(resolve(dir, "grade-horarios.jpg"));
+    gradeHorarios = "/grade-horarios.jpg?v=" + createHash("md5").update(readFileSync(resolve(dir, "grade-horarios.jpg"))).digest("hex").slice(0, 8);
+  }
   const tipos = { json: "application/json", js: "text/javascript", png: "image/png", jpg: "image/jpeg" };
 
   const ID_VIRTUAL = "virtual:marca";
@@ -44,7 +52,7 @@ function marcaPlugin(slug) {
     name: "marca",
     resolveId(id) { if (id === ID_VIRTUAL) return "\0" + ID_VIRTUAL; },
     load(id) {
-      if (id === "\0" + ID_VIRTUAL) return `export const MARCA = ${JSON.stringify(marca)};\nexport const LOGO_CIRCULAR = ${JSON.stringify(logoCircular)};\nexport const LOGO_ICONE = ${JSON.stringify(logoIcone)};\nexport const LOGO_FUNDO = ${JSON.stringify(logoFundo)};\n`;
+      if (id === "\0" + ID_VIRTUAL) return `export const MARCA = ${JSON.stringify(marca)};\nexport const LOGO_CIRCULAR = ${JSON.stringify(logoCircular)};\nexport const LOGO_ICONE = ${JSON.stringify(logoIcone)};\nexport const LOGO_FUNDO = ${JSON.stringify(logoFundo)};\nexport const GRADE_HORARIOS = ${JSON.stringify(gradeHorarios)};\n`;
     },
     transformIndexHtml: {
       order: "pre",

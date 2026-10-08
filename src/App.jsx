@@ -4,7 +4,7 @@ import { Shield, User, Users, QrCode, Camera, Check, Plus, Trash2, X, Award, Cal
 import { loadAll, saveAll, saveAlunos, salvarInscricaoPush, notificarPush, criarContaAuth, redefinirSenhaAuth, atualizarEmailAuth, excluirContaAuth, excluirDadosRelacionadosAluno } from "./db.js";
 import { uploadArquivo, removerArquivo, pg, supabaseAuth, definirLembrarSessao } from "./supabaseClient.js";
 import { LOGO_CIRCULAR, LOGO_ICONE, LOGO_FUNDO } from "./logos.js";
-import { MARCA } from "virtual:marca";
+import { MARCA, GRADE_HORARIOS } from "virtual:marca";
 
 // Chave pública Web Push da academia (par da VAPID_PRIVATE_KEY nos secrets do Supabase).
 const VAPID_PUBLIC_KEY = MARCA.vapidPublicKey;
@@ -766,8 +766,102 @@ function EvolucaoFaixas({ faixas, faixaId, grau, checkinsDesdeGraduacao, categor
   );
 }
 
+// Visualizador em tela cheia com zoom próprio (pinça, toque duplo e botões +/−): o viewport do app
+// bloqueia o zoom nativo da página (user-scalable=no), então o zoom é feito aqui dentro.
+function ImagemZoom({ src, alt, onFechar }) {
+  const [escala, setEscala] = useState(1);
+  const caixaRef = useRef(null);
+  const pinca = useRef(null);
+  const ultimoToque = useRef(0);
+  const MIN = 1, MAX = 5;
+  const limitar = (z) => Math.min(MAX, Math.max(MIN, z));
+
+  // Aplica um novo zoom mantendo fixo o ponto (px, py) da tela, relativo à caixa.
+  const aplicarZoom = (nova, px, py, base = escala, baseScroll = null) => {
+    const caixa = caixaRef.current;
+    if (!caixa) return;
+    nova = limitar(nova);
+    const sl = baseScroll ? baseScroll.left : caixa.scrollLeft;
+    const st = baseScroll ? baseScroll.top : caixa.scrollTop;
+    const fator = nova / base;
+    setEscala(nova);
+    requestAnimationFrame(() => {
+      caixa.scrollLeft = (sl + px) * fator - px;
+      caixa.scrollTop = (st + py) * fator - py;
+    });
+  };
+
+  useEffect(() => {
+    const overflowAntes = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const tecla = (e) => { if (e.key === "Escape") onFechar(); };
+    window.addEventListener("keydown", tecla);
+    return () => { document.body.style.overflow = overflowAntes; window.removeEventListener("keydown", tecla); };
+  }, [onFechar]);
+
+  const relativo = (x, y) => { const r = caixaRef.current.getBoundingClientRect(); return [x - r.left, y - r.top]; };
+  const distancia = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+
+  const onTouchStart = (e) => {
+    if (e.touches.length === 2) {
+      const [px, py] = relativo((e.touches[0].clientX + e.touches[1].clientX) / 2, (e.touches[0].clientY + e.touches[1].clientY) / 2);
+      pinca.current = { dist: distancia(e.touches), escala, px, py, scroll: { left: caixaRef.current.scrollLeft, top: caixaRef.current.scrollTop } };
+    } else if (e.touches.length === 1) {
+      const agora = Date.now();
+      if (agora - ultimoToque.current < 300) {
+        const [px, py] = relativo(e.touches[0].clientX, e.touches[0].clientY);
+        aplicarZoom(escala > 1.5 ? 1 : 2.5, px, py);
+        ultimoToque.current = 0;
+      } else ultimoToque.current = agora;
+    }
+  };
+  const onTouchMove = (e) => {
+    if (e.touches.length === 2 && pinca.current) {
+      e.preventDefault();
+      const p = pinca.current;
+      aplicarZoom(p.escala * (distancia(e.touches) / p.dist), p.px, p.py, p.escala, p.scroll);
+    }
+  };
+  const onTouchEnd = (e) => { if (e.touches.length < 2) pinca.current = null; };
+  const onWheel = (e) => {
+    if (!e.ctrlKey) return;
+    e.preventDefault();
+    const [px, py] = relativo(e.clientX, e.clientY);
+    aplicarZoom(escala * (e.deltaY < 0 ? 1.15 : 1 / 1.15), px, py);
+  };
+  const botaoZoom = (fator) => {
+    const caixa = caixaRef.current;
+    aplicarZoom(escala * fator, caixa.clientWidth / 2, caixa.clientHeight / 2);
+  };
+
+  // touchmove precisa ser não-passivo para o preventDefault da pinça funcionar.
+  useEffect(() => {
+    const caixa = caixaRef.current;
+    if (!caixa) return;
+    const mover = (e) => onTouchMove(e);
+    caixa.addEventListener("touchmove", mover, { passive: false });
+    return () => caixa.removeEventListener("touchmove", mover);
+  });
+
+  const botao = { width: 44, height: 44, borderRadius: 22, border: "1px solid rgba(255,255,255,0.25)", background: "rgba(20,23,31,0.85)", color: "#FFFFFF", fontSize: 22, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" };
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#000000", zIndex: 9999, display: "flex", flexDirection: "column" }}>
+      <div ref={caixaRef} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} onWheel={onWheel}
+        style={{ flex: 1, overflow: "auto", touchAction: "pan-x pan-y", WebkitOverflowScrolling: "touch" }}>
+        <img src={src} alt={alt} draggable={false} style={{ display: "block", width: `${escala * 100}%`, maxWidth: "none", height: "auto", margin: escala === 1 ? "0 auto" : 0, userSelect: "none" }} />
+      </div>
+      <button onClick={onFechar} aria-label="Fechar" style={{ ...botao, position: "absolute", top: "calc(12px + env(safe-area-inset-top))", right: 12 }}><X size={22} /></button>
+      <div style={{ position: "absolute", bottom: "calc(16px + env(safe-area-inset-bottom))", left: 0, right: 0, display: "flex", justifyContent: "center", gap: 12, pointerEvents: "none" }}>
+        <button onClick={() => botaoZoom(1 / 1.5)} aria-label="Diminuir zoom" style={{ ...botao, pointerEvents: "auto", opacity: escala <= MIN ? 0.4 : 1 }}>−</button>
+        <button onClick={() => botaoZoom(1.5)} aria-label="Aumentar zoom" style={{ ...botao, pointerEvents: "auto", opacity: escala >= MAX ? 0.4 : 1 }}>+</button>
+      </div>
+    </div>
+  );
+}
+
 function GradeHorarios({ turmas }) {
   const [aberto, setAberto] = useState(false);
+  const [telaCheia, setTelaCheia] = useState(false);
   const dias = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
   const comAula = dias.filter((dia) => turmas.some((t) => (t.dias || []).includes(dia)));
   return (
@@ -776,7 +870,16 @@ function GradeHorarios({ turmas }) {
         <span style={{ ...blockTitleStyle, color: "#FFFFFF" }}>Grade de horários</span>
         <span style={{ fontSize: 18, color: "#C9A227" }}>{aberto ? "−" : "+"}</span>
       </button>
-      {aberto && (
+      {aberto && GRADE_HORARIOS && (
+        <div style={{ marginTop: 10 }}>
+          <button onClick={() => setTelaCheia(true)} style={{ display: "block", width: "100%", padding: 0, border: "none", background: "none", cursor: "zoom-in" }}>
+            <img src={GRADE_HORARIOS} alt="Grade de horários" style={{ display: "block", width: "100%", height: "auto", borderRadius: 8 }} />
+          </button>
+          <div style={{ marginTop: 6, fontSize: 11.5, color: "#9B9891", textAlign: "center" }}>Toque na imagem para ampliar</div>
+          {telaCheia && <ImagemZoom src={GRADE_HORARIOS} alt="Grade de horários" onFechar={() => setTelaCheia(false)} />}
+        </div>
+      )}
+      {aberto && !GRADE_HORARIOS && (
         comAula.length === 0 ? (
           <div style={{ marginTop: 10 }}><Empty dark>Nenhuma turma cadastrada ainda.</Empty></div>
         ) : (
