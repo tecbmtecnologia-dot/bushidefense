@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { pg } from "./supabaseClient.js";
 import { LOGO_CIRCULAR } from "./logos.js";
+import { MARCA } from "virtual:marca";
 
 // Cronômetro de treino: página standalone (fora do login), pensada pra ficar aberta numa TV do
 // tatame. Só lê a tabela pública "academia" (nome/logo) pra se personalizar — não depende de
@@ -117,7 +118,7 @@ function ConfigTela({ config, setConfig, onIniciar, academia }) {
         <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 14 }}>
           <div>
             <span style={labelStyle}>Nome exibido no cronômetro</span>
-            <input type="text" style={campoStyle} value={config.nomeCustom} onChange={(e) => setConfig((c) => ({ ...c, nomeCustom: e.target.value }))} placeholder={academia?.nome || "ex: Cia Paulista — Unidade Centro"} />
+            <input type="text" style={campoStyle} value={config.nomeCustom} onChange={(e) => setConfig((c) => ({ ...c, nomeCustom: e.target.value }))} placeholder={academia?.nome || `ex: ${MARCA.nomeEquipe} — Unidade Centro`} />
           </div>
 
           <div>

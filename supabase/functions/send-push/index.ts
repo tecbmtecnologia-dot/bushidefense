@@ -12,7 +12,10 @@ const VAPID_PRIVATE = Deno.env.get("VAPID_PRIVATE_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-webpush.setVapidDetails("mailto:contato@qgciapaulista.com", VAPID_PUBLIC, VAPID_PRIVATE);
+// Contato da academia exigido pelo Web Push. Cada projeto Supabase (academia) define o seu
+// no secret ACADEMIA_EMAIL; sem ele, usa o da Cia Paulista.
+const ACADEMIA_EMAIL = Deno.env.get("ACADEMIA_EMAIL") || "contato@qgciapaulista.com";
+webpush.setVapidDetails(`mailto:${ACADEMIA_EMAIL}`, VAPID_PUBLIC, VAPID_PRIVATE);
 
 Deno.serve(async (req) => {
   const cors = {

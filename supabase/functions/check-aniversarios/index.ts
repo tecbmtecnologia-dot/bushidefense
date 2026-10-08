@@ -12,7 +12,10 @@ const VAPID_PRIVATE = Deno.env.get("VAPID_PRIVATE_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-webpush.setVapidDetails("mailto:contato@qgciapaulista.com", VAPID_PUBLIC, VAPID_PRIVATE);
+// Contato da academia exigido pelo Web Push. Cada projeto Supabase (academia) define o seu
+// no secret ACADEMIA_EMAIL; sem ele, usa o da Cia Paulista.
+const ACADEMIA_EMAIL = Deno.env.get("ACADEMIA_EMAIL") || "contato@qgciapaulista.com";
+webpush.setVapidDetails(`mailto:${ACADEMIA_EMAIL}`, VAPID_PUBLIC, VAPID_PRIVATE);
 
 function hojeBrasilia() {
   // Brasil não tem mais horário de verão desde 2019: deslocamento fixo de -3h.
@@ -27,7 +30,7 @@ Deno.serve(async () => {
     const { mes, dia, ano } = hojeBrasilia();
 
     const { data: academiaRows } = await supabase.from("academia").select("mensagem_aniversario").limit(1);
-    const mensagemBase = academiaRows?.[0]?.mensagem_aniversario || "Toda a equipe do QG deseja um ótimo dia. 🥋";
+    const mensagemBase = academiaRows?.[0]?.mensagem_aniversario || `Toda a equipe do ${Deno.env.get("ACADEMIA_SEDE") || "QG"} deseja um ótimo dia. 🥋`;
 
     const { data: alunos, error: errAlunos } = await supabase.from("alunos").select("id, nome, data_nascimento");
     const { data: professores, error: errProfessores } = await supabase.from("professores").select("id, nome, data_nascimento");

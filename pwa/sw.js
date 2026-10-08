@@ -28,7 +28,7 @@ self.addEventListener("fetch", (event) => {
 
 // Recebe a notificação push mesmo com o app fechado e exibe no sistema.
 self.addEventListener("push", (event) => {
-  let dados = { titulo: "QG Cia Paulista", mensagem: "Você tem uma novidade no app." };
+  let dados = { titulo: "__MARCA_NOME_APP__", mensagem: "Você tem uma novidade no app." };
   try { if (event.data) dados = { ...dados, ...event.data.json() }; } catch (_) {}
   event.waitUntil(
     self.registration.showNotification(dados.titulo, {
