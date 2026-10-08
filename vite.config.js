@@ -5,7 +5,7 @@ import { readFileSync } from "fs";
 
 // Cada academia é uma "marca" em marcas/<slug>/ (marca.json + ícones + logo). O deploy escolhe
 // qual usar pela variável VITE_MARCA (no Netlify: Site settings > Environment variables).
-// Sem ela, usa a Cia Paulista — o deploy atual continua igual.
+// Sem ela, usa a Bushi Strategy.
 function marcaPlugin(slug) {
   const dir = resolve(__dirname, "marcas", slug);
   const marca = JSON.parse(readFileSync(resolve(dir, "marca.json"), "utf8"));
@@ -70,7 +70,7 @@ function marcaPlugin(slug) {
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   return {
-    plugins: [react(), marcaPlugin(env.VITE_MARCA || "ciapaulista")],
+    plugins: [react(), marcaPlugin(env.VITE_MARCA || "bushistrategy")],
     build: {
       rollupOptions: {
         input: {

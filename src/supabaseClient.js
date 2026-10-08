@@ -1,15 +1,18 @@
 // Cada academia (deploy) pode ter seu próprio Supabase, configurado via variáveis de
-// ambiente (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY) no Netlify. Sem essa configuração
-// (ex: build local sem .env), cai no banco padrão da Cia Paulista — mantém tudo funcionando
-// como já funcionava antes, sem precisar mexer em nada pro deploy atual.
+// ambiente (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY) no Netlify ou no arquivo .env local.
+// Sem essa configuração o app não sobe — de propósito: este projeto NUNCA pode cair no banco
+// de outra academia.
 //
 // VITE_SUPABASE_ANON_KEY aceita tanto a chave legada "anon" (eyJ...) quanto a "publishable
 // key" nova do Supabase (sb_publishable_...) — as duas funcionam do mesmo jeito nos headers
 // apikey/Authorization abaixo.
 import { createClient } from "@supabase/supabase-js";
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://bzcvckrlettgnauvcmaz.supabase.co";
-const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "sb_publishable_f2xg2seDxumSJJUSCBD9MA_ICQiYuyh";
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+  throw new Error("Supabase não configurado: defina VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY (Netlify ou .env).");
+}
 
 export const SUPABASE_KEY_EXPORT = SUPABASE_KEY;
 export const SUPABASE_URL_EXPORT = SUPABASE_URL;
