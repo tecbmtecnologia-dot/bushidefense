@@ -6,7 +6,8 @@ import { uploadArquivo, removerArquivo, pg, supabaseAuth, definirLembrarSessao }
 import { LOGO_CIRCULAR } from "./logos.js";
 import { MARCA } from "virtual:marca";
 
-const VAPID_PUBLIC_KEY = "BGKxQaeijzD265ey6QLdzFQDzzl9zZMthYYjlkAFKvsr-AtpsqrcanHs96CePRDF9wU6_N0z8-IU1PFVg3IpB6I";
+// Chave pública Web Push da academia (par da VAPID_PRIVATE_KEY nos secrets do Supabase).
+const VAPID_PUBLIC_KEY = MARCA.vapidPublicKey;
 
 function urlBase64ToUint8Array(base64String) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);

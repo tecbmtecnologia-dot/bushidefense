@@ -4,3 +4,7 @@ dist
 supabase/.temp
 *.local
 .env
+
+# Token de acesso do Supabase (nunca versionar)
+token
+token.txt
