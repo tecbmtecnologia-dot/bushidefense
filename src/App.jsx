@@ -4867,11 +4867,14 @@ function GolpesProibidosCard({ pdf, pdfNome }) {
   );
 }
 
-const LINK_TABELA_PESOS = "https://fpjjcompetidor.com.br/tabela-de-pesos/";
-
-function TabelaPesosCard() {
+// Tabela de pesos configurada no painel (Configurações): link e/ou arquivo (imagem com zoom, ou PDF).
+function TabelaPesosCard({ link, arquivo, arquivoNome }) {
   const light = useDesktopLight();
   const [aberto, setAberto] = useState(false);
+  const [telaCheia, setTelaCheia] = useState(false);
+  if (!link && !arquivo) return null;
+  const ehImagem = arquivo && arquivo.startsWith("data:image");
+  const textoLink = link ? link.replace(/^https?:\/\//, "").replace(/\/$/, "") : "";
   return (
     <Card style={light ? { marginBottom: 14 } : { marginBottom: 14, background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}>
       <button onClick={() => setAberto((v) => !v)} style={{ width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -4879,9 +4882,27 @@ function TabelaPesosCard() {
         <span style={{ fontSize: 18, color: "#C9A227" }}>{aberto ? "−" : "+"}</span>
       </button>
       {aberto && (
-        <a href={LINK_TABELA_PESOS} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 10, fontSize: 13, fontWeight: 600, color: "#C9A227", wordBreak: "break-all" }}>
-          🔗 fpjjcompetidor.com.br/tabela-de-pesos/
-        </a>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>
+          {ehImagem && (
+            <div>
+              <button onClick={() => setTelaCheia(true)} style={{ display: "block", width: "100%", padding: 0, border: "none", background: "none", cursor: "zoom-in" }}>
+                <img src={arquivo} alt="Tabela de pesos" style={{ display: "block", width: "100%", height: "auto", borderRadius: 8 }} />
+              </button>
+              <div style={{ marginTop: 6, fontSize: 11.5, color: "#9B9891", textAlign: "center" }}>Toque na imagem para ampliar</div>
+              {telaCheia && <ImagemZoom src={arquivo} alt="Tabela de pesos" onFechar={() => setTelaCheia(false)} />}
+            </div>
+          )}
+          {arquivo && !ehImagem && (
+            <a href={arquivo} target="_blank" rel="noreferrer" onClick={(e) => { e.preventDefault(); abrirPdfDataUrl(arquivo); }} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "#C9A227" }}>
+              📄 Abrir PDF ({arquivoNome || "tabela-de-pesos.pdf"})
+            </a>
+          )}
+          {link && (
+            <a href={link} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "#C9A227", wordBreak: "break-all" }}>
+              🔗 {textoLink}
+            </a>
+          )}
+        </div>
       )}
     </Card>
   );
@@ -5148,17 +5169,22 @@ function ConfiguracoesAdmin({ data, save }) {
   const [marcaDagua, setMarcaDagua] = useState(data.academia.marcaDagua || null);
   const [golpesProibidosPdf, setGolpesProibidosPdf] = useState(data.academia.golpesProibidosPdf || null);
   const [golpesProibidosPdfNome, setGolpesProibidosPdfNome] = useState(data.academia.golpesProibidosPdfNome || "");
+  const [tabelaPesosLink, setTabelaPesosLink] = useState(data.academia.tabelaPesosLink || "");
+  const [tabelaPesosArquivo, setTabelaPesosArquivo] = useState(data.academia.tabelaPesosArquivo || null);
+  const [tabelaPesosArquivoNome, setTabelaPesosArquivoNome] = useState(data.academia.tabelaPesosArquivoNome || "");
   const logoRef = useRef(null);
   const pdfRef = useRef(null);
   const regrasRef = useRef(null);
   const marcaDaguaRef = useRef(null);
   const golpesProibidosRef = useRef(null);
+  const tabelaPesosRef = useRef(null);
 
   const onLogo = (e) => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => setLogo(r.result); r.readAsDataURL(f); };
   const onPdf = (e) => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => { setTermoPdf(r.result); setTermoPdfNome(f.name); }; r.readAsDataURL(f); };
   const onRegras = (e) => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => setRegrasTatame(r.result); r.readAsDataURL(f); };
   const onMarcaDagua = (e) => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => setMarcaDagua(r.result); r.readAsDataURL(f); };
   const onGolpesProibidos = (e) => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => { setGolpesProibidosPdf(r.result); setGolpesProibidosPdfNome(f.name); }; r.readAsDataURL(f); };
+  const onTabelaPesos = (e) => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => { setTabelaPesosArquivo(r.result); setTabelaPesosArquivoNome(f.name); }; r.readAsDataURL(f); };
   const usarLocalizacaoAtual = () => {
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition((pos) => {
@@ -5173,6 +5199,7 @@ function ConfiguracoesAdmin({ data, save }) {
         ...data.academia, nome, chavePix, termoPadrao: termo, logo, termoPdf, termoPdfNome,
         endereco, latitude: latitude === "" ? null : Number(latitude), longitude: longitude === "" ? null : Number(longitude),
         raioCheckin: Number(raioCheckin) || 150, instagram, facebook, whatsapp, mensagemAniversario, regrasTatame, sobreEquipe, marcaDagua, golpesProibidosPdf, golpesProibidosPdfNome,
+        tabelaPesosLink: tabelaPesosLink.trim() || null, tabelaPesosArquivo, tabelaPesosArquivoNome: tabelaPesosArquivoNome || null,
       },
     });
   };
@@ -5247,6 +5274,17 @@ function ConfiguracoesAdmin({ data, save }) {
             {golpesProibidosPdf && <Button variant="ghost" icon={X} onClick={() => { setGolpesProibidosPdf(null); setGolpesProibidosPdfNome(""); }} style={ghostConfig}>Remover</Button>}
           </div>
           <p style={{ fontSize: 11.5, color: rotuloConfig, marginTop: 4 }}>Se enviado, aparece pro aluno na aba "Mais" e também no app do professor, como um link pra abrir o PDF.</p>
+        </Field>
+        <Field label="Tabela de pesos e categorias (opcional)" labelColor={rotuloConfig}>
+          <input style={inputStyle} value={tabelaPesosLink} onChange={(e) => setTabelaPesosLink(e.target.value)} placeholder="Link do site da tabela (ex: site da federação)" />
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
+            {tabelaPesosArquivo && tabelaPesosArquivo.startsWith("data:image") && <img src={tabelaPesosArquivo} alt="tabela de pesos" style={{ width: 56, height: 56, borderRadius: 10, objectFit: "cover", border: "1px solid rgba(255,255,255,0.14)" }} />}
+            <Button variant="ghost" icon={Camera} onClick={() => tabelaPesosRef.current?.click()} style={ghostConfig}>{tabelaPesosArquivo ? "Trocar imagem/PDF" : "Enviar imagem ou PDF"}</Button>
+            <input ref={tabelaPesosRef} type="file" accept="image/*,application/pdf" hidden onChange={onTabelaPesos} />
+            {tabelaPesosArquivoNome && <span style={{ fontSize: 12.5, color: rotuloConfig }}>{tabelaPesosArquivoNome}</span>}
+            {tabelaPesosArquivo && <Button variant="ghost" icon={X} onClick={() => { setTabelaPesosArquivo(null); setTabelaPesosArquivoNome(""); }} style={ghostConfig}>Remover</Button>}
+          </div>
+          <p style={{ fontSize: 11.5, color: rotuloConfig, marginTop: 4 }}>Aparece pro aluno e no app do professor. Imagem abre com zoom; PDF e link abrem numa nova aba. Pode usar só o link, só o arquivo, ou os dois. Sem nada, o card não aparece.</p>
         </Field>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
           <Field label="Instagram" labelColor={rotuloConfig}><input style={inputStyle} value={instagram} onChange={(e) => setInstagram(e.target.value)} placeholder="https://instagram.com/..." /></Field>
@@ -5775,7 +5813,7 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
         <div>
           <AvisosProfessor data={data} save={save} prof={prof} dark />
           <GolpesProibidosCard pdf={data.academia.golpesProibidosPdf} pdfNome={data.academia.golpesProibidosPdfNome} />
-          <TabelaPesosCard />
+          <TabelaPesosCard link={data.academia.tabelaPesosLink} arquivo={data.academia.tabelaPesosArquivo} arquivoNome={data.academia.tabelaPesosArquivoNome} />
         </div>
       )}
 
@@ -6431,7 +6469,7 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
           </div>
           <div style={{ marginTop: 20 }}>
             <GolpesProibidosCard pdf={data.academia.golpesProibidosPdf} pdfNome={data.academia.golpesProibidosPdfNome} />
-            <TabelaPesosCard />
+            <TabelaPesosCard link={data.academia.tabelaPesosLink} arquivo={data.academia.tabelaPesosArquivo} arquivoNome={data.academia.tabelaPesosArquivoNome} />
           </div>
         </div>
 
@@ -7148,7 +7186,7 @@ function AlunoDashboard({ data, save, aluno, onSair }) {
           <RegrasTatameAluno imagem={data.academia.regrasTatame} />
 
           <GolpesProibidosCard pdf={data.academia.golpesProibidosPdf} pdfNome={data.academia.golpesProibidosPdfNome} />
-          <TabelaPesosCard />
+          <TabelaPesosCard link={data.academia.tabelaPesosLink} arquivo={data.academia.tabelaPesosArquivo} arquivoNome={data.academia.tabelaPesosArquivoNome} />
 
           {(data.academia.instagram || data.academia.facebook || data.academia.whatsapp) && (
             <Card style={{ marginBottom: 14, background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}>
