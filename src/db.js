@@ -10,6 +10,7 @@ const MAPS = {
     mensagemAniversario: "mensagem_aniversario", regrasTatame: "regras_tatame", sobreEquipe: "sobre_equipe", marcaDagua: "marca_dagua",
     golpesProibidosPdf: "golpes_proibidos_pdf", golpesProibidosPdfNome: "golpes_proibidos_pdf_nome",
     adminAuthUserId: "admin_auth_user_id", emailAdmin: "email_admin",
+    tabelaPesosLink: "tabela_pesos_link", tabelaPesosArquivo: "tabela_pesos_arquivo", tabelaPesosArquivoNome: "tabela_pesos_arquivo_nome",
   },
   faixas: {
     id: "id", nome: "nome", cor: "cor", texto: "texto", borda: "borda", corPonta: "cor_ponta",

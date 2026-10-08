@@ -765,6 +765,99 @@ function EvolucaoFaixas({ faixas, faixaId, grau, checkinsDesdeGraduacao, categor
   );
 }
 
+// Visualizador em tela cheia com zoom próprio (pinça, toque duplo e botões +/−): o viewport do app
+// bloqueia o zoom nativo da página (user-scalable=no), então o zoom é feito aqui dentro.
+function ImagemZoom({ src, alt, onFechar }) {
+  const [escala, setEscala] = useState(1);
+  const caixaRef = useRef(null);
+  const pinca = useRef(null);
+  const ultimoToque = useRef(0);
+  const MIN = 1, MAX = 5;
+  const limitar = (z) => Math.min(MAX, Math.max(MIN, z));
+
+  // Aplica um novo zoom mantendo fixo o ponto (px, py) da tela, relativo à caixa.
+  const aplicarZoom = (nova, px, py, base = escala, baseScroll = null) => {
+    const caixa = caixaRef.current;
+    if (!caixa) return;
+    nova = limitar(nova);
+    const sl = baseScroll ? baseScroll.left : caixa.scrollLeft;
+    const st = baseScroll ? baseScroll.top : caixa.scrollTop;
+    const fator = nova / base;
+    setEscala(nova);
+    requestAnimationFrame(() => {
+      caixa.scrollLeft = (sl + px) * fator - px;
+      caixa.scrollTop = (st + py) * fator - py;
+    });
+  };
+
+  useEffect(() => {
+    const overflowAntes = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const tecla = (e) => { if (e.key === "Escape") onFechar(); };
+    window.addEventListener("keydown", tecla);
+    return () => { document.body.style.overflow = overflowAntes; window.removeEventListener("keydown", tecla); };
+  }, [onFechar]);
+
+  const relativo = (x, y) => { const r = caixaRef.current.getBoundingClientRect(); return [x - r.left, y - r.top]; };
+  const distancia = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+
+  const onTouchStart = (e) => {
+    if (e.touches.length === 2) {
+      const [px, py] = relativo((e.touches[0].clientX + e.touches[1].clientX) / 2, (e.touches[0].clientY + e.touches[1].clientY) / 2);
+      pinca.current = { dist: distancia(e.touches), escala, px, py, scroll: { left: caixaRef.current.scrollLeft, top: caixaRef.current.scrollTop } };
+    } else if (e.touches.length === 1) {
+      const agora = Date.now();
+      if (agora - ultimoToque.current < 300) {
+        const [px, py] = relativo(e.touches[0].clientX, e.touches[0].clientY);
+        aplicarZoom(escala > 1.5 ? 1 : 2.5, px, py);
+        ultimoToque.current = 0;
+      } else ultimoToque.current = agora;
+    }
+  };
+  const onTouchMove = (e) => {
+    if (e.touches.length === 2 && pinca.current) {
+      e.preventDefault();
+      const p = pinca.current;
+      aplicarZoom(p.escala * (distancia(e.touches) / p.dist), p.px, p.py, p.escala, p.scroll);
+    }
+  };
+  const onTouchEnd = (e) => { if (e.touches.length < 2) pinca.current = null; };
+  const onWheel = (e) => {
+    if (!e.ctrlKey) return;
+    e.preventDefault();
+    const [px, py] = relativo(e.clientX, e.clientY);
+    aplicarZoom(escala * (e.deltaY < 0 ? 1.15 : 1 / 1.15), px, py);
+  };
+  const botaoZoom = (fator) => {
+    const caixa = caixaRef.current;
+    aplicarZoom(escala * fator, caixa.clientWidth / 2, caixa.clientHeight / 2);
+  };
+
+  // touchmove precisa ser não-passivo para o preventDefault da pinça funcionar.
+  useEffect(() => {
+    const caixa = caixaRef.current;
+    if (!caixa) return;
+    const mover = (e) => onTouchMove(e);
+    caixa.addEventListener("touchmove", mover, { passive: false });
+    return () => caixa.removeEventListener("touchmove", mover);
+  });
+
+  const botao = { width: 44, height: 44, borderRadius: 22, border: "1px solid rgba(255,255,255,0.25)", background: "rgba(20,23,31,0.85)", color: "#FFFFFF", fontSize: 22, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" };
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#000000", zIndex: 9999, display: "flex", flexDirection: "column" }}>
+      <div ref={caixaRef} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} onWheel={onWheel}
+        style={{ flex: 1, overflow: "auto", touchAction: "pan-x pan-y", WebkitOverflowScrolling: "touch" }}>
+        <img src={src} alt={alt} draggable={false} style={{ display: "block", width: `${escala * 100}%`, maxWidth: "none", height: "auto", margin: escala === 1 ? "0 auto" : 0, userSelect: "none" }} />
+      </div>
+      <button onClick={onFechar} aria-label="Fechar" style={{ ...botao, position: "absolute", top: "calc(12px + env(safe-area-inset-top))", right: 12 }}><X size={22} /></button>
+      <div style={{ position: "absolute", bottom: "calc(16px + env(safe-area-inset-bottom))", left: 0, right: 0, display: "flex", justifyContent: "center", gap: 12, pointerEvents: "none" }}>
+        <button onClick={() => botaoZoom(1 / 1.5)} aria-label="Diminuir zoom" style={{ ...botao, pointerEvents: "auto", opacity: escala <= MIN ? 0.4 : 1 }}>−</button>
+        <button onClick={() => botaoZoom(1.5)} aria-label="Aumentar zoom" style={{ ...botao, pointerEvents: "auto", opacity: escala >= MAX ? 0.4 : 1 }}>+</button>
+      </div>
+    </div>
+  );
+}
+
 function GradeHorarios({ turmas }) {
   const [aberto, setAberto] = useState(false);
   const dias = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
@@ -4767,11 +4860,14 @@ function GolpesProibidosCard({ pdf, pdfNome }) {
   );
 }
 
-const LINK_TABELA_PESOS = "https://fpjjcompetidor.com.br/tabela-de-pesos/";
-
-function TabelaPesosCard() {
+// Tabela de pesos configurada no painel (Configurações): link e/ou arquivo (imagem com zoom, ou PDF).
+function TabelaPesosCard({ link, arquivo, arquivoNome }) {
   const light = useDesktopLight();
   const [aberto, setAberto] = useState(false);
+  const [telaCheia, setTelaCheia] = useState(false);
+  if (!link && !arquivo) return null;
+  const ehImagem = arquivo && arquivo.startsWith("data:image");
+  const textoLink = link ? link.replace(/^https?:\/\//, "").replace(/\/$/, "") : "";
   return (
     <Card style={light ? { marginBottom: 14 } : { marginBottom: 14, background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}>
       <button onClick={() => setAberto((v) => !v)} style={{ width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -4779,9 +4875,27 @@ function TabelaPesosCard() {
         <span style={{ fontSize: 18, color: "#C9A227" }}>{aberto ? "−" : "+"}</span>
       </button>
       {aberto && (
-        <a href={LINK_TABELA_PESOS} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 10, fontSize: 13, fontWeight: 600, color: "#C9A227", wordBreak: "break-all" }}>
-          🔗 fpjjcompetidor.com.br/tabela-de-pesos/
-        </a>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>
+          {ehImagem && (
+            <div>
+              <button onClick={() => setTelaCheia(true)} style={{ display: "block", width: "100%", padding: 0, border: "none", background: "none", cursor: "zoom-in" }}>
+                <img src={arquivo} alt="Tabela de pesos" style={{ display: "block", width: "100%", height: "auto", borderRadius: 8 }} />
+              </button>
+              <div style={{ marginTop: 6, fontSize: 11.5, color: "#9B9891", textAlign: "center" }}>Toque na imagem para ampliar</div>
+              {telaCheia && <ImagemZoom src={arquivo} alt="Tabela de pesos" onFechar={() => setTelaCheia(false)} />}
+            </div>
+          )}
+          {arquivo && !ehImagem && (
+            <a href={arquivo} target="_blank" rel="noreferrer" onClick={(e) => { e.preventDefault(); abrirPdfDataUrl(arquivo); }} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "#C9A227" }}>
+              📄 Abrir PDF ({arquivoNome || "tabela-de-pesos.pdf"})
+            </a>
+          )}
+          {link && (
+            <a href={link} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "#C9A227", wordBreak: "break-all" }}>
+              🔗 {textoLink}
+            </a>
+          )}
+        </div>
       )}
     </Card>
   );
@@ -5048,17 +5162,22 @@ function ConfiguracoesAdmin({ data, save }) {
   const [marcaDagua, setMarcaDagua] = useState(data.academia.marcaDagua || null);
   const [golpesProibidosPdf, setGolpesProibidosPdf] = useState(data.academia.golpesProibidosPdf || null);
   const [golpesProibidosPdfNome, setGolpesProibidosPdfNome] = useState(data.academia.golpesProibidosPdfNome || "");
+  const [tabelaPesosLink, setTabelaPesosLink] = useState(data.academia.tabelaPesosLink || "");
+  const [tabelaPesosArquivo, setTabelaPesosArquivo] = useState(data.academia.tabelaPesosArquivo || null);
+  const [tabelaPesosArquivoNome, setTabelaPesosArquivoNome] = useState(data.academia.tabelaPesosArquivoNome || "");
   const logoRef = useRef(null);
   const pdfRef = useRef(null);
   const regrasRef = useRef(null);
   const marcaDaguaRef = useRef(null);
   const golpesProibidosRef = useRef(null);
+  const tabelaPesosRef = useRef(null);
 
   const onLogo = (e) => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => setLogo(r.result); r.readAsDataURL(f); };
   const onPdf = (e) => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => { setTermoPdf(r.result); setTermoPdfNome(f.name); }; r.readAsDataURL(f); };
   const onRegras = (e) => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => setRegrasTatame(r.result); r.readAsDataURL(f); };
   const onMarcaDagua = (e) => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => setMarcaDagua(r.result); r.readAsDataURL(f); };
   const onGolpesProibidos = (e) => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => { setGolpesProibidosPdf(r.result); setGolpesProibidosPdfNome(f.name); }; r.readAsDataURL(f); };
+  const onTabelaPesos = (e) => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => { setTabelaPesosArquivo(r.result); setTabelaPesosArquivoNome(f.name); }; r.readAsDataURL(f); };
   const usarLocalizacaoAtual = () => {
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition((pos) => {
@@ -5073,6 +5192,7 @@ function ConfiguracoesAdmin({ data, save }) {
         ...data.academia, nome, chavePix, termoPadrao: termo, logo, termoPdf, termoPdfNome,
         endereco, latitude: latitude === "" ? null : Number(latitude), longitude: longitude === "" ? null : Number(longitude),
         raioCheckin: Number(raioCheckin) || 150, instagram, facebook, whatsapp, mensagemAniversario, regrasTatame, sobreEquipe, marcaDagua, golpesProibidosPdf, golpesProibidosPdfNome,
+        tabelaPesosLink: tabelaPesosLink.trim() || null, tabelaPesosArquivo, tabelaPesosArquivoNome: tabelaPesosArquivoNome || null,
       },
     });
   };
@@ -5147,6 +5267,17 @@ function ConfiguracoesAdmin({ data, save }) {
             {golpesProibidosPdf && <Button variant="ghost" icon={X} onClick={() => { setGolpesProibidosPdf(null); setGolpesProibidosPdfNome(""); }} style={ghostConfig}>Remover</Button>}
           </div>
           <p style={{ fontSize: 11.5, color: rotuloConfig, marginTop: 4 }}>Se enviado, aparece pro aluno na aba "Mais" e também no app do professor, como um link pra abrir o PDF.</p>
+        </Field>
+        <Field label="Tabela de pesos e categorias (opcional)" labelColor={rotuloConfig}>
+          <input style={inputStyle} value={tabelaPesosLink} onChange={(e) => setTabelaPesosLink(e.target.value)} placeholder="Link do site da tabela (ex: site da federação)" />
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
+            {tabelaPesosArquivo && tabelaPesosArquivo.startsWith("data:image") && <img src={tabelaPesosArquivo} alt="tabela de pesos" style={{ width: 56, height: 56, borderRadius: 10, objectFit: "cover", border: "1px solid rgba(255,255,255,0.14)" }} />}
+            <Button variant="ghost" icon={Camera} onClick={() => tabelaPesosRef.current?.click()} style={ghostConfig}>{tabelaPesosArquivo ? "Trocar imagem/PDF" : "Enviar imagem ou PDF"}</Button>
+            <input ref={tabelaPesosRef} type="file" accept="image/*,application/pdf" hidden onChange={onTabelaPesos} />
+            {tabelaPesosArquivoNome && <span style={{ fontSize: 12.5, color: rotuloConfig }}>{tabelaPesosArquivoNome}</span>}
+            {tabelaPesosArquivo && <Button variant="ghost" icon={X} onClick={() => { setTabelaPesosArquivo(null); setTabelaPesosArquivoNome(""); }} style={ghostConfig}>Remover</Button>}
+          </div>
+          <p style={{ fontSize: 11.5, color: rotuloConfig, marginTop: 4 }}>Aparece pro aluno e no app do professor. Imagem abre com zoom; PDF e link abrem numa nova aba. Pode usar só o link, só o arquivo, ou os dois. Sem nada, o card não aparece.</p>
         </Field>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
           <Field label="Instagram" labelColor={rotuloConfig}><input style={inputStyle} value={instagram} onChange={(e) => setInstagram(e.target.value)} placeholder="https://instagram.com/..." /></Field>
@@ -5677,7 +5808,7 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
         <div>
           <AvisosProfessor data={data} save={save} prof={prof} dark />
           <GolpesProibidosCard pdf={data.academia.golpesProibidosPdf} pdfNome={data.academia.golpesProibidosPdfNome} />
-          <TabelaPesosCard />
+          <TabelaPesosCard link={data.academia.tabelaPesosLink} arquivo={data.academia.tabelaPesosArquivo} arquivoNome={data.academia.tabelaPesosArquivoNome} />
         </div>
       )}
 
@@ -6333,7 +6464,7 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
           </div>
           <div style={{ marginTop: 20 }}>
             <GolpesProibidosCard pdf={data.academia.golpesProibidosPdf} pdfNome={data.academia.golpesProibidosPdfNome} />
-            <TabelaPesosCard />
+            <TabelaPesosCard link={data.academia.tabelaPesosLink} arquivo={data.academia.tabelaPesosArquivo} arquivoNome={data.academia.tabelaPesosArquivoNome} />
           </div>
         </div>
 
@@ -7050,7 +7181,7 @@ function AlunoDashboard({ data, save, aluno, onSair }) {
           <RegrasTatameAluno imagem={data.academia.regrasTatame} />
 
           <GolpesProibidosCard pdf={data.academia.golpesProibidosPdf} pdfNome={data.academia.golpesProibidosPdfNome} />
-          <TabelaPesosCard />
+          <TabelaPesosCard link={data.academia.tabelaPesosLink} arquivo={data.academia.tabelaPesosArquivo} arquivoNome={data.academia.tabelaPesosArquivoNome} />
 
           {(data.academia.instagram || data.academia.facebook || data.academia.whatsapp) && (
             <Card style={{ marginBottom: 14, background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}>
