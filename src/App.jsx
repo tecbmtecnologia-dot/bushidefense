@@ -3,7 +3,7 @@ import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, BarChart, Ba
 import { Shield, User, Users, QrCode, Camera, Check, Plus, Trash2, X, Award, CalendarCheck, CreditCard, ChevronRight, LogOut, Gift, RefreshCw, Download, Share, LayoutDashboard, UserCog, Calendar, Wallet, FileText, Bell, MapPin, Video, Home, ShoppingBag, Receipt, PlayCircle, Settings, Timer, ExternalLink, ClipboardList } from "lucide-react";
 import { loadAll, saveAll, saveAlunos, salvarInscricaoPush, notificarPush, criarContaAuth, redefinirSenhaAuth, atualizarEmailAuth, excluirContaAuth, excluirDadosRelacionadosAluno } from "./db.js";
 import { uploadArquivo, removerArquivo, pg, supabaseAuth, definirLembrarSessao } from "./supabaseClient.js";
-import { LOGO_CIRCULAR } from "./logos.js";
+import { LOGO_CIRCULAR, LOGO_ICONE } from "./logos.js";
 import { MARCA } from "virtual:marca";
 
 // Chave pública Web Push da academia (par da VAPID_PRIVATE_KEY nos secrets do Supabase).
@@ -1310,11 +1310,7 @@ function TopNav({ role, setRole, academia, modo, onAtualizar }) {
     <div style={{ background: "#000000", padding: "0 20px", paddingTop: "env(safe-area-inset-top)" }}>
       <div style={{ maxWidth: 980, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "16px 0" }}>
-          {academia.logo ? (
-            <img src={academia.logo} alt="logo" style={{ width: 34, height: 34, borderRadius: 8, objectFit: "cover" }} />
-          ) : (
-            <div style={{ width: 34, height: 34, borderRadius: 8, background: "#C9A227", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Oswald", fontWeight: 700, color: "#12213B" }}>{academia.nome[0]}</div>
-          )}
+          <img src={academia.logo || LOGO_ICONE} alt="logo" style={{ width: 34, height: 34, borderRadius: 8, objectFit: "cover" }} />
           <span style={{ fontFamily: "Oswald", fontWeight: 700, fontSize: 20, letterSpacing: 0.5, color: "#FFFFFF", textTransform: "uppercase" }}>{academia.nome}</span>
           <button onClick={atualizar} title="Atualizar dados" style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", padding: 4 }}>
             <RefreshCw size={16} color="#C9C4B4" style={{ animation: girando ? "qg-spin 0.6s linear infinite" : "none" }} />
@@ -5234,7 +5230,7 @@ function LoginPreto({ logo, titulo, subtitulo, children }) {
       padding: "40px 20px",
     }}>
       <div style={{ maxWidth: 380, width: "100%", textAlign: "center" }}>
-        <img src={logo || LOGO_CIRCULAR} alt="" style={{ width: 130, height: 130, objectFit: "contain", marginBottom: 18, borderRadius: "50%" }} />
+        <img src={logo || LOGO_CIRCULAR} alt="" style={{ width: 200, height: 200, objectFit: "contain", marginBottom: 18, borderRadius: "50%" }} />
         <div style={{ fontFamily: "Oswald", fontWeight: 700, fontSize: 18, color: "#FFFFFF", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>{titulo}</div>
         {subtitulo && <div style={{ fontSize: 12.5, color: "#8F97A8", marginBottom: 20 }}>{subtitulo}</div>}
         <div style={{ textAlign: "left" }}>{children}</div>
