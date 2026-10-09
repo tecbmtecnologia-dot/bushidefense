@@ -167,6 +167,7 @@ function dadosExportaveisAluno(aluno, data) {
       termoAceito: !!aluno.termoAceito, termoAceitoEm: aluno.termoAceitoEm || null,
       assinaturaRegistrada: !!aluno.assinaturaTermo,
     },
+    anamnese: aluno.anamneseEm ? { preenchidaEm: aluno.anamneseEm, respostas: aluno.anamnese?.respostas || {} } : null,
     pagamentos: (aluno.pagamentos || []).map((p) => ({ data: p.data, valor: p.valor })),
     checkins: (data.checkins || []).filter((c) => c.alunoId === aluno.id).map((c) => ({ dataHora: c.dataHora })),
     compras: (data.vendas || []).filter((v) => v.alunoId === aluno.id).map((v) => ({ produto: v.produtoNome, valor: v.valor, data: v.data })),
@@ -1298,7 +1299,7 @@ export default function App({ modo = "admin" }) {
   const emTelaLoginPreta = (role === "professor" && !activeProfId) || (role === "aluno" && !activeAlunoId);
   const alunoAtivo = role === "aluno" ? data.alunos.find((a) => a.id === activeAlunoId) : null;
   const profAtivo = role === "professor" ? data.professores.find((p) => p.id === activeProfId) : null;
-  const alunoNoDashboardProprio = role === "aluno" && alunoAtivo && alunoAtivo.ativo !== false && !(alunoAtivo.primeiroAcesso && (data.academia.termoPadrao || data.academia.termoPdf));
+  const alunoNoDashboardProprio = role === "aluno" && alunoAtivo && alunoAtivo.ativo !== false && !(alunoAtivo.primeiroAcesso && (data.academia.termoPadrao || data.academia.termoPdf)) && !!alunoAtivo.anamneseEm;
   const professorNoDashboardMobileProprio = role === "professor" && !!profAtivo && !ehDesktopTop;
   const temRodapeProprio = alunoNoDashboardProprio || professorNoDashboardMobileProprio;
 
@@ -3031,6 +3032,78 @@ function gerarDocumentoTermoAssinado(data, aluno, onErro) {
       </div>
       ${pdfLink}
       ${termoHtml}
+      ${assinaturaHtml}
+      ${rodapeRelatorioModerno()}
+    </body></html>`;
+
+  abrirJanelaRelatorio(html, onErro);
+}
+
+/* Perguntas da anamnese que o aluno responde no app. `detalhe` = campo de texto que aparece
+   (e passa a ser obrigatório) quando a resposta é uma das `detalheQuando`. `alerta` = respostas
+   que o professor precisa ver em destaque. */
+const ANAMNESE_PERGUNTAS = [
+  { id: "cardiaco", texto: "Tem problema cardíaco?", opcoes: [["sim", "Sim"], ["nao", "Não"]], alerta: ["sim"] },
+  { id: "pressao", texto: "Possui pressão:", opcoes: [["alta", "Alta (hipertensão)"], ["baixa", "Baixa"], ["normal", "Normal"]], alerta: ["alta", "baixa"] },
+  { id: "diabetes", texto: "Tem diabetes?", opcoes: [["sim", "Sim"], ["nao", "Não"]], alerta: ["sim"], detalhe: { id: "diabetesTipo", texto: "Se sim, qual tipo?" }, detalheQuando: ["sim"] },
+  { id: "respiratorio", texto: "Tem problema respiratório (asma)?", opcoes: [["sim", "Sim"], ["nao", "Não"]], alerta: ["sim"] },
+  { id: "limitacao", texto: "Possui alguma limitação física, lesão ou dor?", opcoes: [["sim", "Sim"], ["nao", "Não"]], alerta: ["sim"], detalhe: { id: "limitacaoQual", texto: "Se sim, qual?" }, detalheQuando: ["sim"] },
+  { id: "medicamento", texto: "Faz uso de algum medicamento?", opcoes: [["sim", "Sim"], ["nao", "Não"]], alerta: ["sim"], detalhe: { id: "medicamentoDetalhe", texto: "Se sim, por qual motivo e há quanto tempo?" }, detalheQuando: ["sim"] },
+  { id: "arteMarcial", texto: "Pratica ou já praticou alguma arte marcial?", opcoes: [["sim", "Sim"], ["nao", "Não"], ["parado", "Já pratiquei mas estou parado"]], alerta: [] },
+];
+const ANAMNESE_DECLARACAO = "Declaro que as informações acima são verdadeiras e estou apto para a prática de atividade física, ciente de que a prática do Jiu-Jitsu envolve esforço físico e riscos inerentes ao esporte.";
+
+const escaparHtml = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+/* Perguntas com resposta que pede atenção do professor (ex: "Tem problema cardíaco? Sim"). */
+function alertasAnamnese(anamnese) {
+  const r = anamnese?.respostas || {};
+  return ANAMNESE_PERGUNTAS.filter((q) => q.alerta.includes(r[q.id])).map((q) => {
+    const opcao = q.opcoes.find(([v]) => v === r[q.id])?.[1];
+    const detalhe = q.detalhe && r[q.detalhe.id] ? ` — ${r[q.detalhe.id]}` : "";
+    return `${q.texto.replace(/[?:]$/, "")}: ${opcao}${detalhe}`;
+  });
+}
+
+function gerarDocumentoAnamnese(data, aluno, onErro) {
+  if (!aluno.anamneseEm || !aluno.anamnese) { onErro && onErro("Este aluno ainda não preencheu a anamnese."); return; }
+  const r = aluno.anamnese.respostas || {};
+
+  const perguntasHtml = ANAMNESE_PERGUNTAS.map((q) => {
+    const opcoesHtml = q.opcoes.map(([v, rotulo]) => {
+      const marcado = r[q.id] === v;
+      const destaque = marcado && q.alerta.includes(v);
+      return `<span style="display:inline-block;margin:4px 16px 0 0;font-size:12.5px;${marcado ? `font-weight:700;color:${destaque ? "#B3401E" : "#1B2027"};` : "color:#8A8574;"}">(${marcado ? "X" : "&nbsp;&nbsp;"}) ${rotulo}</span>`;
+    }).join("");
+    const detalheHtml = q.detalhe && q.detalheQuando.includes(r[q.id])
+      ? `<div style="font-size:12.5px;margin-top:6px;"><span style="color:#8A8574;">${q.detalhe.texto}</span> <b>${escaparHtml(r[q.detalhe.id]) || "—"}</b></div>`
+      : "";
+    return `<div style="border-bottom:1px solid #EFEBDF;padding:10px 0;"><div style="font-size:13px;font-weight:600;">${q.texto}</div><div>${opcoesHtml}</div>${detalheHtml}</div>`;
+  }).join("");
+
+  const alertas = alertasAnamnese(aluno.anamnese);
+  const alertasHtml = alertas.length
+    ? `<div style="border:1px solid #F0C9BC;background:#FCEFEA;border-radius:8px;padding:10px 14px;margin:14px 0;font-size:12.5px;color:#B3401E;"><b>Atenção:</b><ul style="margin:6px 0 0 18px;padding:0;">${alertas.map((t) => `<li>${escaparHtml(t)}</li>`).join("")}</ul></div>`
+    : "";
+
+  const assinaturaHtml = aluno.anamnese.assinatura
+    ? `<div style="margin-top:20px;"><img src="${aluno.anamnese.assinatura}" style="max-width:280px;display:block;" /><div style="border-top:1px solid #1B2027;width:280px;margin-top:2px;"></div><div style="font-size:11px;color:#8A8574;margin-top:4px;">Assinatura de ${escaparHtml(aluno.nome)}</div></div>`
+    : "";
+
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Anamnese - ${escaparHtml(aluno.nome)}</title>
+    <style>${estiloRelatorioModerno()}</style></head>
+    <body>
+      ${marcaDaguaRelatorio(data)}
+      <button class="voltar-btn" onclick="window.close()">← Voltar para o app</button>
+      ${cabecalhoRelatorioModerno(data, "Anamnese", aluno.nome)}
+      <div class="stats">
+        <div class="stat"><div class="label">Aluno</div><div class="value" style="font-size:15px;">${escaparHtml(aluno.nome)}</div></div>
+        <div class="stat"><div class="label">Preenchida em</div><div class="value" style="font-size:15px;">${new Date(aluno.anamneseEm).toLocaleString("pt-BR")}</div></div>
+      </div>
+      ${alertasHtml}
+      <div style="margin:10px 0;">${perguntasHtml}</div>
+      <p style="font-size:12.5px;line-height:1.6;margin-top:16px;">${ANAMNESE_DECLARACAO}</p>
+      <p style="font-size:12.5px;font-weight:700;">(X) Li e concordo com os termos apresentados.</p>
       ${assinaturaHtml}
       ${rodapeRelatorioModerno()}
     </body></html>`;
@@ -5774,6 +5847,23 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
                           <div style={{ fontSize: 12.5, color: "#FF8A80", fontWeight: 600 }}>Pendente — o aluno ainda não assinou.</div>
                         )}
                       </div>
+
+                      <div style={secaoStyle}>
+                        <div style={tituloSecaoStyle}>🩺 Anamnese</div>
+                        {a.anamneseEm ? (
+                          <div>
+                            <div style={{ fontSize: 12.5, color: "#4ADE80", fontWeight: 600, marginBottom: 8 }}>Preenchida em {new Date(a.anamneseEm).toLocaleDateString("pt-BR")}</div>
+                            {alertasAnamnese(a.anamnese).length > 0 && (
+                              <div style={{ fontSize: 12, color: "#FF8A80", marginBottom: 8, lineHeight: 1.5 }}>
+                                ⚠ {alertasAnamnese(a.anamnese).join(" · ")}
+                              </div>
+                            )}
+                            <Button variant="ghost" onClick={() => gerarDocumentoAnamnese(data, a, (msg) => alert(msg))} style={ghostEscuro}>Ver anamnese</Button>
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: 12.5, color: "#FF8A80", fontWeight: 600 }}>Pendente — o aluno ainda não preencheu.</div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </Card>
@@ -6392,6 +6482,23 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
                           <div style={{ fontSize: 12.5, color: "#FF8A80", fontWeight: 600 }}>Pendente — o aluno ainda não assinou.</div>
                         )}
                       </div>
+
+                      <div style={secaoStyle}>
+                        <div style={tituloSecaoStyle}>🩺 Anamnese</div>
+                        {a.anamneseEm ? (
+                          <div>
+                            <div style={{ fontSize: 12.5, color: "#4ADE80", fontWeight: 600, marginBottom: 8 }}>Preenchida em {new Date(a.anamneseEm).toLocaleDateString("pt-BR")}</div>
+                            {alertasAnamnese(a.anamnese).length > 0 && (
+                              <div style={{ fontSize: 12, color: "#FF8A80", marginBottom: 8, lineHeight: 1.5 }}>
+                                ⚠ {alertasAnamnese(a.anamnese).join(" · ")}
+                              </div>
+                            )}
+                            <Button variant="ghost" onClick={() => gerarDocumentoAnamnese(data, a, (msg) => alert(msg))} style={{ color: "#F5F3EC", border: "1px solid rgba(255,255,255,0.2)" }}>Ver anamnese</Button>
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: 12.5, color: "#FF8A80", fontWeight: 600 }}>Pendente — o aluno ainda não preencheu.</div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </Card>
@@ -6754,6 +6861,70 @@ function PrimeiroAcessoTermoProfessor({ data, save, prof }) {
   );
 }
 
+function PrimeiroAcessoAnamnese({ data, save, aluno }) {
+  const [respostas, setRespostas] = useState({});
+  const [aceito, setAceito] = useState(false);
+  const [assinatura, setAssinatura] = useState(null);
+  const [salvando, setSalvando] = useState(false);
+  const responder = (id, valor) => setRespostas((r) => ({ ...r, [id]: valor }));
+
+  const faltando = ANAMNESE_PERGUNTAS.some((q) => !respostas[q.id] || (q.detalhe && q.detalheQuando.includes(respostas[q.id]) && !(respostas[q.detalhe.id] || "").trim()));
+  const podeEnviar = !faltando && aceito && assinatura && !salvando;
+
+  const confirmar = async () => {
+    if (!podeEnviar) return;
+    // Só guarda o texto de "Se sim, ..." quando a resposta pede — se o aluno digitou e depois trocou pra "Não", descarta.
+    const limpas = {};
+    ANAMNESE_PERGUNTAS.forEach((q) => {
+      limpas[q.id] = respostas[q.id];
+      if (q.detalhe && q.detalheQuando.includes(respostas[q.id])) limpas[q.detalhe.id] = respostas[q.detalhe.id].trim();
+    });
+    setSalvando(true);
+    const alunos = data.alunos.map((a) => (a.id === aluno.id ? { ...a, anamnese: { respostas: limpas, declaracaoAceita: true, assinatura }, anamneseEm: new Date().toISOString() } : a));
+    try { await save({ ...data, alunos }); } finally { setSalvando(false); }
+  };
+
+  return (
+    <div style={{ maxWidth: 480, margin: "20px auto", padding: "0 20px", boxSizing: "border-box" }}>
+      <SectionTitle sub={`${aluno.nome}, responda o questionário de saúde abaixo. Ele fica salvo no seu cadastro e disponível para o seu professor.`}>Anamnese</SectionTitle>
+      <Card>
+        {ANAMNESE_PERGUNTAS.map((q) => (
+          <div key={q.id} style={{ borderBottom: "1px solid #EFEBDF", paddingBottom: 12, marginBottom: 12 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 600, color: "#1B2027", marginBottom: 6 }}>{q.texto}</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 16px" }}>
+              {q.opcoes.map(([valor, rotulo]) => (
+                <label key={valor} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
+                  <input type="radio" name={`anamnese-${q.id}`} checked={respostas[q.id] === valor} onChange={() => responder(q.id, valor)} />
+                  {rotulo}
+                </label>
+              ))}
+            </div>
+            {q.detalhe && q.detalheQuando.includes(respostas[q.id]) && (
+              <div style={{ marginTop: 8 }}>
+                <Field label={q.detalhe.texto}>
+                  <input style={inputStyle} value={respostas[q.detalhe.id] || ""} onChange={(e) => responder(q.detalhe.id, e.target.value)} />
+                </Field>
+              </div>
+            )}
+          </div>
+        ))}
+        <p style={{ fontSize: 12.5, color: "#5A5648", lineHeight: 1.55, margin: "0 0 10px" }}>{ANAMNESE_DECLARACAO}</p>
+        <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13, marginBottom: 12 }}>
+          <input type="checkbox" checked={aceito} onChange={(e) => setAceito(e.target.checked)} style={{ marginTop: 3 }} />
+          Li e concordo com os termos apresentados.
+        </label>
+        <Field label="Assine com o dedo abaixo">
+          <SignaturePad onChange={setAssinatura} />
+        </Field>
+        {faltando && <p style={{ fontSize: 11.5, color: "#B3401E", margin: "6px 0 0" }}>Responda todas as perguntas (e o campo "Se sim" quando marcar Sim) para continuar.</p>}
+        <div style={{ marginTop: 12 }}>
+          <Button icon={Check} variant="gold" disabled={!podeEnviar} onClick={confirmar}>{salvando ? "Salvando..." : "Enviar anamnese"}</Button>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 function AlunoView({ data, save, activeAlunoId }) {
   const aluno = data.alunos.find((a) => a.id === activeAlunoId);
   const handleSair = () => { supabaseAuth.signOut(); };
@@ -6775,6 +6946,7 @@ function AlunoView({ data, save, activeAlunoId }) {
 
   if (!aluno || aluno.ativo === false) return <AlunoLogin data={data} />;
   if (aluno.primeiroAcesso && (data.academia.termoPadrao || data.academia.termoPdf)) return <PrimeiroAcessoTermo data={data} save={save} aluno={aluno} />;
+  if (!aluno.anamneseEm) return <PrimeiroAcessoAnamnese data={data} save={save} aluno={aluno} />;
   return <AlunoDashboard data={data} save={save} aluno={aluno} onSair={handleSair} />;
 }
 
