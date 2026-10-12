@@ -1472,6 +1472,8 @@ function RelatoriosProfessor({ data, prof, meusAlunos }) {
   const [dataCheckins, setDataCheckins] = useState(hoje());
   const [mesFinanceiro, setMesFinanceiro] = useState(() => new Date().toISOString().slice(0, 7));
   const [anoFinanceiro, setAnoFinanceiro] = useState(() => String(new Date().getFullYear()));
+  const [mesConfirmados, setMesConfirmados] = useState(() => new Date().toISOString().slice(0, 7));
+  const [mesPendentes, setMesPendentes] = useState(() => new Date().toISOString().slice(0, 7));
   const [mesAniversario, setMesAniversario] = useState(new Date().getMonth());
   const [erro, setErro] = useState("");
   const secaoRef = useRef(null);
@@ -1569,6 +1571,22 @@ function RelatoriosProfessor({ data, prof, meusAlunos }) {
             onClick={() => setSecaoExpandida(secaoExpandida === "pagamentos" ? null : "pagamentos")} />
         )}
 
+        {visivel("financeiro", "Pagamentos confirmados") && (
+          <CartaoRelatorio dark corIcone="#EAF7EE" icone="✅" tag="Financeiro" titulo="Pagamentos confirmados"
+            descricao="Lista dos pagamentos que os seus alunos fizeram no mês, com data e valor." botao={{ variant: "gold" }}
+            onClick={() => { setErro(""); gerarRelatorioPagamentosConfirmados(data, mesConfirmados, setErro, meusAlunos, prof.nome); }}>
+            <input type="month" style={{ ...inputStyle, maxWidth: "100%" }} value={mesConfirmados} onChange={(e) => setMesConfirmados(e.target.value)} />
+          </CartaoRelatorio>
+        )}
+
+        {visivel("financeiro", "Pagamentos pendentes") && (
+          <CartaoRelatorio dark corIcone="#FFEAEA" icone="⏳" tag="Financeiro" titulo="Pagamentos pendentes"
+            descricao="Seus alunos sem pagamento cobrindo o mês, com telefone e valor em aberto." botao={{ variant: "gold" }}
+            onClick={() => { setErro(""); gerarRelatorioPagamentosPendentes(data, mesPendentes, setErro, meusAlunos, prof.nome); }}>
+            <input type="month" style={{ ...inputStyle, maxWidth: "100%" }} value={mesPendentes} onChange={(e) => setMesPendentes(e.target.value)} />
+          </CartaoRelatorio>
+        )}
+
         {visivel("financeiro", "Vendas de produtos") && (
           <CartaoRelatorio dark corIcone="#FFF3E0" icone="🛍️" tag="Financeiro" titulo="Vendas de produtos"
             descricao="Total vendido e detalhamento por produto, das suas vendas registradas." botao={{ variant: "gold" }}
@@ -1635,6 +1653,8 @@ function RelatoriosAdmin({ data }) {
   const [dataCheckins, setDataCheckins] = useState(hoje());
   const [mesFinanceiro, setMesFinanceiro] = useState(() => new Date().toISOString().slice(0, 7));
   const [anoFinanceiro, setAnoFinanceiro] = useState(() => String(new Date().getFullYear()));
+  const [mesConfirmados, setMesConfirmados] = useState(() => new Date().toISOString().slice(0, 7));
+  const [mesPendentes, setMesPendentes] = useState(() => new Date().toISOString().slice(0, 7));
   const [mesAniversario, setMesAniversario] = useState(new Date().getMonth());
   const [erro, setErro] = useState("");
   const [tipoPeriodoResumo, setTipoPeriodoResumo] = useState("dia");
@@ -1776,6 +1796,22 @@ function RelatoriosAdmin({ data }) {
           <CartaoRelatorio corIcone="#F1EAFF" icone="📈" tag="Financeiro" titulo="Pagamentos: confirmados x pendentes"
             descricao="Gráfico visual comparando os dois grupos no mês." botao={{ variant: "gold", texto: "Ver gráfico" }}
             onClick={() => setSecaoExpandida(secaoExpandida === "pagamentos" ? null : "pagamentos")} />
+        )}
+
+        {visivel("financeiro", "Pagamentos confirmados") && (
+          <CartaoRelatorio corIcone="#EAF7EE" icone="✅" tag="Financeiro" titulo="Pagamentos confirmados"
+            descricao="Todos os pagamentos recebidos no mês, com data, professor, plano e valor." botao={{ variant: "gold" }}
+            onClick={() => { setErro(""); gerarRelatorioPagamentosConfirmados(data, mesConfirmados, setErro); }}>
+            <input type="month" style={{ ...inputStyle, maxWidth: "100%" }} value={mesConfirmados} onChange={(e) => setMesConfirmados(e.target.value)} />
+          </CartaoRelatorio>
+        )}
+
+        {visivel("financeiro", "Pagamentos pendentes") && (
+          <CartaoRelatorio corIcone="#FFEAEA" icone="⏳" tag="Financeiro" titulo="Pagamentos pendentes"
+            descricao="Alunos sem pagamento cobrindo o mês, com telefone, professor e valor em aberto." botao={{ variant: "gold" }}
+            onClick={() => { setErro(""); gerarRelatorioPagamentosPendentes(data, mesPendentes, setErro); }}>
+            <input type="month" style={{ ...inputStyle, maxWidth: "100%" }} value={mesPendentes} onChange={(e) => setMesPendentes(e.target.value)} />
+          </CartaoRelatorio>
         )}
 
         {visivel("graduacao", "Alunos por faixa") && (
@@ -3156,6 +3192,102 @@ function gerarRelatorioMensal(data, mes, onErro, alunosFiltro, tituloExtra) {
         <table><thead><tr><th>Aluno</th><th>Data</th><th>Valor</th></tr></thead><tbody>${linhasConfirmados}</tbody></table>
         <div class="section-title">Pagamentos pendentes no mês</div>
         <table><thead><tr><th>Aluno</th><th>Plano</th><th>Valor</th></tr></thead><tbody>${linhasPendentes}</tbody></table>
+        ${rodapeRelatorioModerno()}
+      </div>
+    </body></html>`;
+
+  abrirJanelaRelatorio(html, onErro);
+}
+
+function gerarRelatorioPagamentosConfirmados(data, mes, onErro, alunosFiltro, tituloExtra) {
+  const alunosBase = alunosFiltro || data.alunos;
+  const [ano, mesNum] = mes.split("-");
+  const nomeMes = MESES[Number(mesNum) - 1];
+  const confirmados = alunosBase
+    .flatMap((a) => (a.pagamentos || []).filter((p) => p.data.slice(0, 7) === mes).map((p) => ({ ...p, aluno: a })))
+    .sort((x, y) => x.data.localeCompare(y.data) || x.aluno.nome.localeCompare(y.aluno.nome));
+  const total = confirmados.reduce((s, p) => s + (p.valor || 0), 0);
+  const totalMensalidades = confirmados.reduce((s, p) => s + (p.valorMensalidade ?? p.valor ?? 0), 0);
+  const totalProdutos = confirmados.reduce((s, p) => s + (p.valorProdutos || 0), 0);
+
+  const linhas = confirmados.map((p) => {
+    const plano = data.planos.find((pl) => pl.id === p.aluno.planoId);
+    const professor = data.professores.find((pr) => pr.id === p.aluno.professorId);
+    return `<tr>
+      <td>${new Date(p.data + "T00:00:00").toLocaleDateString("pt-BR")}</td>
+      <td>${escaparHtml(p.aluno.nome)}</td>
+      <td>${escaparHtml(professor?.nome || "—")}</td>
+      <td>${escaparHtml(plano?.nome || "—")}</td>
+      <td>R$ ${(p.valorMensalidade ?? p.valor ?? 0).toFixed(2)}</td>
+      <td>R$ ${(p.valorProdutos || 0).toFixed(2)}</td>
+      <td><strong>R$ ${(p.valor || 0).toFixed(2)}</strong></td>
+    </tr>`;
+  }).join("") || `<tr><td colspan="7">Nenhum pagamento confirmado neste mês.</td></tr>`;
+  const linhaTotal = confirmados.length
+    ? `<tr><td colspan="4"><strong>Total</strong></td><td><strong>R$ ${totalMensalidades.toFixed(2)}</strong></td><td><strong>R$ ${totalProdutos.toFixed(2)}</strong></td><td><strong>R$ ${total.toFixed(2)}</strong></td></tr>`
+    : "";
+
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Pagamentos confirmados ${nomeMes} ${ano}</title>
+    <style>${estiloRelatorioModerno()}</style></head>
+    <body>
+      ${marcaDaguaRelatorio(data)}
+      <button class="voltar-btn" onclick="window.close()">← Voltar para o app</button>
+      ${cabecalhoRelatorioModerno(data, "Pagamentos confirmados" + (tituloExtra ? " — " + tituloExtra : ""), `${nomeMes} de ${ano}`)}
+      <div class="conteudo">
+        <div class="stats">
+          <div class="stat"><div class="label">Pagamentos confirmados</div><div class="value">${confirmados.length}</div></div>
+          <div class="stat"><div class="label">Alunos que pagaram</div><div class="value">${new Set(confirmados.map((p) => p.aluno.id)).size}</div></div>
+          <div class="stat"><div class="label">Mensalidades</div><div class="value">R$ ${totalMensalidades.toFixed(2)}</div></div>
+          <div class="stat"><div class="label">Produtos</div><div class="value">R$ ${totalProdutos.toFixed(2)}</div></div>
+          <div class="stat"><div class="label">Total recebido</div><div class="value">R$ ${total.toFixed(2)}</div></div>
+        </div>
+        <div class="section-title">Pagamentos confirmados no mês</div>
+        <table><thead><tr><th>Data</th><th>Aluno</th><th>Professor</th><th>Plano</th><th>Mensalidade</th><th>Produtos</th><th>Total</th></tr></thead><tbody>${linhas}${linhaTotal}</tbody></table>
+        ${rodapeRelatorioModerno()}
+      </div>
+    </body></html>`;
+
+  abrirJanelaRelatorio(html, onErro);
+}
+
+function gerarRelatorioPagamentosPendentes(data, mes, onErro, alunosFiltro, tituloExtra) {
+  const alunosBase = alunosFiltro || data.alunos;
+  const [ano, mesNum] = mes.split("-");
+  const nomeMes = MESES[Number(mesNum) - 1];
+  const pendentes = [...pendentesNoMes(alunosBase, data.planos, mes)].sort((a, b) => a.nome.localeCompare(b.nome));
+  const valorDe = (a) => data.planos.find((p) => p.id === a.planoId)?.valor || 0;
+  const total = pendentes.reduce((s, a) => s + valorDe(a), 0);
+
+  const linhas = pendentes.map((a) => {
+    const plano = data.planos.find((p) => p.id === a.planoId);
+    const professor = data.professores.find((p) => p.id === a.professorId);
+    return `<tr>
+      <td>${escaparHtml(a.nome)}</td>
+      <td>${escaparHtml(a.telefone || "—")}</td>
+      <td>${escaparHtml(professor?.nome || "—")}</td>
+      <td>${escaparHtml(plano?.nome || "—")}</td>
+      <td>${a.diaVencimento ? `Dia ${a.diaVencimento}` : "—"}</td>
+      <td>${a.ultimoPagamento ? new Date(a.ultimoPagamento + "T00:00:00").toLocaleDateString("pt-BR") : "Nunca pagou"}</td>
+      <td><strong>R$ ${valorDe(a).toFixed(2)}</strong></td>
+    </tr>`;
+  }).join("") || `<tr><td colspan="7">Nenhuma pendência neste mês.</td></tr>`;
+  const linhaTotal = pendentes.length
+    ? `<tr><td colspan="6"><strong>Total pendente</strong></td><td><strong>R$ ${total.toFixed(2)}</strong></td></tr>`
+    : "";
+
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Pagamentos pendentes ${nomeMes} ${ano}</title>
+    <style>${estiloRelatorioModerno()}</style></head>
+    <body>
+      ${marcaDaguaRelatorio(data)}
+      <button class="voltar-btn" onclick="window.close()">← Voltar para o app</button>
+      ${cabecalhoRelatorioModerno(data, "Pagamentos pendentes" + (tituloExtra ? " — " + tituloExtra : ""), `${nomeMes} de ${ano}`)}
+      <div class="conteudo">
+        <div class="stats">
+          <div class="stat"><div class="label">Alunos com pendência</div><div class="value">${pendentes.length}</div></div>
+          <div class="stat"><div class="label">Valor pendente</div><div class="value">R$ ${total.toFixed(2)}</div></div>
+        </div>
+        <div class="section-title">Alunos sem pagamento cobrindo o mês</div>
+        <table><thead><tr><th>Aluno</th><th>Telefone</th><th>Professor</th><th>Plano</th><th>Vencimento</th><th>Último pagamento</th><th>Valor</th></tr></thead><tbody>${linhas}${linhaTotal}</tbody></table>
         ${rodapeRelatorioModerno()}
       </div>
     </body></html>`;
