@@ -42,6 +42,14 @@ const MAPS = {
     criadoEm: "criado_em", ativa: "ativa",
   },
   checkins: { id: "id", sessaoId: "sessao_id", alunoId: "aluno_id", dataHora: "data_hora" },
+  // Histórico de graduações: uma linha por grau/faixa recebido. Os nomes das faixas vão copiados
+  // na linha pra o histórico continuar legível mesmo se a faixa for renomeada ou removida depois.
+  graduacoes: {
+    id: "id", alunoId: "aluno_id", data: "data", tipo: "tipo",
+    faixaAnteriorId: "faixa_anterior_id", faixaAnteriorNome: "faixa_anterior_nome", grauAnterior: "grau_anterior",
+    faixaNovaId: "faixa_nova_id", faixaNovaNome: "faixa_nova_nome", grauNovo: "grau_novo",
+    aulas: "aulas", professorId: "professor_id", registradoPor: "registrado_por",
+  },
   avisos: { id: "id", titulo: "titulo", mensagem: "mensagem", tipo: "tipo", dataEvento: "data_evento", criadoEm: "criado_em", professorId: "professor_id" },
   videos: { id: "id", titulo: "titulo", url: "url", legenda: "legenda", criadoEm: "criado_em", professorId: "professor_id", unidadeId: "unidade_id" },
   unidades: { id: "id", nome: "nome", endereco: "endereco", latitude: "latitude", longitude: "longitude", raioCheckin: "raio_checkin", chavePix: "chave_pix" },
@@ -89,7 +97,7 @@ function fromDb(entity, row) {
  */
 async function syncTable(entity, items, todosOsItens) {
   const rows = items.map((it) => toDb(entity, it, { omitirIndefinidos: true }));
-  const existing = await pg.select(entity, "select=id");
+  const existing = await pg.selectAll(entity, "select=id");
   const existingIds = (existing || []).map((r) => r.id);
   const nextIds = (todosOsItens || items).map((it) => it.id);
   const toDelete = existingIds.filter((id) => !nextIds.includes(id));
@@ -102,14 +110,14 @@ async function syncTable(entity, items, todosOsItens) {
 // "nada disponível ainda" em vez de erro de conexão. Só `academia` (pública) é obrigatória.
 async function selectSafe(table, params) {
   try {
-    return await pg.select(table, params);
+    return await pg.selectAll(table, params);
   } catch (_) {
     return [];
   }
 }
 
 export async function loadAll() {
-  const [academiaRows, faixasRows, planosRows, turmasRows, professoresRows, alunosRows, pagamentosRows, sessoesRows, checkinsRows, avisosRows, videosRows, unidadesRows, produtosRows, vendasRows] = await Promise.all([
+  const [academiaRows, faixasRows, planosRows, turmasRows, professoresRows, alunosRows, pagamentosRows, sessoesRows, checkinsRows, avisosRows, videosRows, unidadesRows, produtosRows, vendasRows, graduacoesRows] = await Promise.all([
     pg.select("academia", "select=*&limit=1"),
     selectSafe("faixas", "select=*&order=ordem.asc"),
     selectSafe("planos"),
@@ -124,6 +132,7 @@ export async function loadAll() {
     selectSafe("unidades", "select=*&order=nome.asc"),
     selectSafe("produtos", "select=*&order=criado_em.desc"),
     selectSafe("vendas", "select=*&order=criado_em.desc"),
+    selectSafe("graduacoes", "select=*&order=data.asc"),
   ]);
 
   if (!academiaRows || academiaRows.length === 0) {
@@ -183,8 +192,15 @@ export async function loadAll() {
     return u;
   });
   const vendas = (vendasRows || []).map((row) => { const v = fromDb("vendas", row); v.valor = Number(v.valor) || 0; return v; });
+  const graduacoes = (graduacoesRows || []).map((row) => {
+    const g = fromDb("graduacoes", row);
+    g.grauAnterior = g.grauAnterior === null ? null : Number(g.grauAnterior);
+    g.grauNovo = Number(g.grauNovo) || 0;
+    g.aulas = g.aulas === null ? null : Number(g.aulas);
+    return g;
+  });
 
-  return { academia, faixas, planos, turmas, professores, alunos, sessoes, checkins, avisos, videos, unidades, produtos, vendas };
+  return { academia, faixas, planos, turmas, professores, alunos, sessoes, checkins, avisos, videos, unidades, produtos, vendas, graduacoes };
 }
 
 /*
@@ -235,6 +251,13 @@ export async function saveAll(next, anterior) {
   if (mudou("unidades")) tarefas.push({ nome: "unidades", fn: () => syncTable("unidades", next.unidades || []) });
   if (mudou("produtos")) tarefas.push({ nome: "produtos", fn: () => syncTable("produtos", soAlterados(next.produtos || [], anterior?.produtos), next.produtos || []) });
   if (mudou("vendas")) tarefas.push({ nome: "vendas", fn: () => syncTable("vendas", next.vendas || []) });
+  // Histórico só cresce: grava as linhas novas e nunca apaga as que já estão no banco (nem as de
+  // alunos de outro professor, que a RLS nem deixa este usuário ver). Some só junto com o aluno
+  // (FK on delete cascade).
+  if (mudou("graduacoes")) {
+    const novas = soAlterados(next.graduacoes || [], anterior?.graduacoes);
+    if (novas.length) tarefas.push({ nome: "graduacoes", fn: () => pg.upsert("graduacoes", novas.map((g) => toDb("graduacoes", g, { omitirIndefinidos: true }))) });
+  }
 
   if (!tarefas.length) return;
 
@@ -335,6 +358,7 @@ export async function excluirContaAuth(authUserId) {
 export async function excluirDadosRelacionadosAluno(alunoId) {
   const tabelas = [
     ["checkins", "aluno_id"],
+    ["graduacoes", "aluno_id"],
     ["vendas", "aluno_id"],
     ["push_subscriptions", "aluno_id"],
     ["recados_visualizados", "aluno_id"],

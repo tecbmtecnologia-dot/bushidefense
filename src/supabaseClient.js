@@ -93,6 +93,21 @@ async function pgFetch(path, options = {}) {
 
 export const pg = {
   select: (table, params = "select=*") => pgFetch(`/${table}?${params}`),
+  // O Supabase corta cada resposta em "max rows" (1000 por padrão) — sem paginar, uma tabela que
+  // cresce sem parar (check-ins, graduações) vinha pela metade: o histórico do aluno sumia e, pior,
+  // o syncTable achava que as linhas que não vieram tinham sido excluídas. Busca página por página
+  // até vir uma página vazia, então funciona com qualquer limite do servidor. Só pra tabelas com
+  // coluna `id` (desempate da ordem — sem ordem total, a mesma linha poderia cair em duas páginas
+  // ou em nenhuma).
+  selectAll: async (table, params = "select=*") => {
+    const comOrdem = /(^|&)order=/.test(params) ? params.replace(/((?:^|&)order=[^&]*)/, "$1,id.asc") : `${params}&order=id.asc`;
+    const todas = [];
+    for (;;) {
+      const pagina = await pgFetch(`/${table}?${comOrdem}&limit=1000&offset=${todas.length}`);
+      if (!pagina || pagina.length === 0) return todas;
+      todas.push(...pagina);
+    }
+  },
   // As linhas podem vir com chaves diferentes (campo ausente = "use o default da coluna"):
   // `columns` lista a união de todas as chaves e `missing=default` faz o Postgres preencher as
   // que faltam numa linha com o DEFAULT da coluna em vez de null — senão uma coluna NOT NULL

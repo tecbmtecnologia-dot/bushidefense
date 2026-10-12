@@ -493,6 +493,64 @@ function progressoGraduacaoTexto(faixas, faixaId, grau, checkinsDesdeGraduacao, 
   return progressoGraduacaoInfo(faixas, faixaId, grau, checkinsDesdeGraduacao, categoria).texto;
 }
 
+// Linha do histórico de graduações (tabela `graduacoes`) pra quando a faixa ou o grau do aluno
+// muda — null se nada mudou. `antes` é o cadastro como estava, então `aulas` guarda quantas aulas
+// ele fez naquela etapa. `extra` traz quem registrou (e tipo "ajuste" quando veio da edição do cadastro).
+function registroGraduacao(faixas, checkins, antes, depois, extra) {
+  const grauAntes = Number(antes.grau) || 0;
+  const grauDepois = Number(depois.grau) || 0;
+  if (antes.faixaId === depois.faixaId && grauAntes === grauDepois) return null;
+  const nomeFaixa = (id) => (faixas || []).find((f) => f.id === id)?.nome || null;
+  return {
+    id: uid(), alunoId: antes.id, data: new Date().toISOString(),
+    tipo: antes.faixaId !== depois.faixaId ? "faixa" : "grau",
+    faixaAnteriorId: antes.faixaId || null, faixaAnteriorNome: nomeFaixa(antes.faixaId), grauAnterior: grauAntes,
+    faixaNovaId: depois.faixaId || null, faixaNovaNome: nomeFaixa(depois.faixaId), grauNovo: grauDepois,
+    aulas: aulasDesdeGraduacao(antes, checkins), ...extra,
+  };
+}
+
+// Jornada do aluno agrupada por faixa, da mais antiga pra atual. Cada faixa tem as etapas de grau
+// que ele passou nela (início/fim) e os treinos (check-ins) feitos em cada etapa. Sem graduação
+// registrada, é uma etapa só: a faixa atual, desde a matrícula.
+function jornadaGraduacao(aluno, graduacoes, checkins) {
+  const regs = (graduacoes || []).filter((g) => g.alunoId === aluno.id).sort((a, b) => a.data.localeCompare(b.data));
+  const etapas = [];
+  let inicio = aluno.matricula ? `${aluno.matricula}T00:00:00` : null;
+  let registro = null;
+  regs.forEach((g) => {
+    etapas.push({ faixaId: g.faixaAnteriorId, faixaNome: g.faixaAnteriorNome, grau: g.grauAnterior || 0, inicio, fim: g.data, registro });
+    inicio = g.data;
+    registro = g;
+  });
+  etapas.push({ faixaId: aluno.faixaId, faixaNome: registro?.faixaNovaNome || null, grau: Number(aluno.grau) || 0, inicio, fim: null, registro, atual: true });
+
+  // Cada check-in cai na etapa em que o aluno estava no dia (o que veio antes da 1ª etapa fica nela).
+  etapas.forEach((e) => { e.treinos = []; });
+  (checkins || []).filter((c) => c.alunoId === aluno.id).forEach((c) => {
+    const t = new Date(c.dataHora).getTime();
+    const etapa = etapas.find((e) => e.fim == null || t < new Date(e.fim).getTime());
+    etapa.treinos.push(c);
+  });
+  etapas.forEach((e) => e.treinos.sort((a, b) => b.dataHora.localeCompare(a.dataHora)));
+
+  const faixas = [];
+  etapas.forEach((e) => {
+    const ultima = faixas[faixas.length - 1];
+    if (ultima && ultima.faixaId === e.faixaId) ultima.etapas.push(e);
+    else faixas.push({ faixaId: e.faixaId, faixaNome: e.faixaNome, etapas: [e] });
+  });
+  faixas.forEach((f) => {
+    f.inicio = f.etapas[0].inicio;
+    f.fim = f.etapas[f.etapas.length - 1].fim;
+    f.atual = f.etapas[f.etapas.length - 1].atual;
+    f.totalTreinos = f.etapas.reduce((n, e) => n + e.treinos.length, 0);
+  });
+  return faixas;
+}
+
+const dataCurtaBR = (iso) => (iso ? new Date(iso).toLocaleDateString("pt-BR") : null);
+
 function useFonts() {
   useEffect(() => {
     if (document.getElementById("qg-fonts")) return;
@@ -691,6 +749,126 @@ function Tag({ ok, children }) {
 function Empty({ children, dark = false }) {
   dark = dark && !useDesktopLight();
   return <div style={{ padding: 24, textAlign: "center", color: dark ? "#C9C4B4" : "#8A8574", fontSize: 13.5, border: `1px dashed ${dark ? "rgba(255,255,255,0.25)" : "#D8D3C4"}`, borderRadius: 10 }}>{children}</div>;
+}
+
+// Faixa de uma etapa do histórico: a barra colorida se a faixa ainda existe no cadastro de faixas,
+// senão só o nome que ficou gravado no registro (faixa renomeada/removida depois).
+function FaixaHistorico({ faixas, faixaId, faixaNome, grau, textColor }) {
+  if ((faixas || []).some((f) => f.id === faixaId)) return <BeltBar faixas={faixas} faixaId={faixaId} grau={grau} textColor={textColor} />;
+  return <span style={{ fontSize: 13, fontWeight: 600, color: textColor }}>Faixa {faixaNome || "—"}{grau ? ` · ${grau}º grau` : ""}</span>;
+}
+
+// Linha do tempo das faixas do aluno (página Evolução do app do aluno): a atual em cima e todas as
+// anteriores embaixo, com as datas de cada grau e quantos treinos ele fez em cada etapa.
+function HistoricoFaixas({ jornada, faixas }) {
+  const ordem = [...jornada].reverse();
+  return (
+    <Card style={{ background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}>
+      <div style={{ display: "flex", flexDirection: "column" }}>
+        {ordem.map((f, i) => (
+          <div key={i} style={{ display: "flex", gap: 12 }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: 14, flexShrink: 0 }}>
+              <div style={{ width: 12, height: 12, borderRadius: "50%", marginTop: 6, background: f.atual ? "#C9A227" : "rgba(255,255,255,0.25)", border: f.atual ? "2px solid #F5E7A8" : "2px solid transparent" }} />
+              {i < ordem.length - 1 && <div style={{ flex: 1, width: 2, background: "rgba(255,255,255,0.12)", marginTop: 4 }} />}
+            </div>
+            <div style={{ flex: 1, minWidth: 0, paddingBottom: i < ordem.length - 1 ? 18 : 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <FaixaHistorico faixas={faixas} faixaId={f.faixaId} faixaNome={f.faixaNome} grau={f.etapas[f.etapas.length - 1].grau} textColor="#F5F3EC" />
+                {f.atual && <span style={{ fontSize: 10, fontWeight: 700, color: "#17181B", background: "#C9A227", borderRadius: 20, padding: "2px 8px", textTransform: "uppercase" }}>Atual</span>}
+              </div>
+              <div style={{ fontSize: 12, color: "#9B9891", marginTop: 4 }}>
+                {f.atual ? (f.inicio ? `Desde ${dataCurtaBR(f.inicio)}` : "Faixa atual") : `${f.inicio ? dataCurtaBR(f.inicio) : "Início"} → ${dataCurtaBR(f.fim)}`} · {f.totalTreinos} treino(s)
+              </div>
+              {f.etapas.length > 1 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 6 }}>
+                  {[...f.etapas].reverse().map((e, j) => (
+                    <div key={j} style={{ fontSize: 12, color: "#C4C0B4" }}>
+                      <span style={{ color: "#C9A227", fontWeight: 700 }}>{e.grau ? `${e.grau}º grau` : "Sem grau"}</span>
+                      {e.inicio ? ` · desde ${dataCurtaBR(e.inicio)}` : ""} · {e.treinos.length} treino(s)
+                    </div>
+                  ))}
+                </div>
+              )}
+              {f.etapas[0].registro?.registradoPor && (
+                <div style={{ fontSize: 11, color: "#8A8574", marginTop: 4 }}>
+                  {f.etapas[0].registro.tipo === "ajuste" ? "Ajustada no cadastro" : "Graduado(a)"} por {f.etapas[0].registro.registradoPor}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+      {jornada.length === 1 && jornada[0].etapas.length === 1 && (
+        <div style={{ fontSize: 12, color: "#9B9891", marginTop: 12 }}>A cada nova faixa ou grau, sua graduação anterior fica guardada aqui.</div>
+      )}
+    </Card>
+  );
+}
+
+// Todos os treinos do aluno, separados pela faixa que ele tinha no dia. A faixa atual vem aberta;
+// as anteriores ficam recolhidas (toque pra abrir).
+function HistoricoTreinos({ jornada, faixas, sessoes, turmas }) {
+  const [abertas, setAbertas] = useState({});
+  const ordem = [...jornada].reverse();
+  const total = jornada.reduce((n, f) => n + f.totalTreinos, 0);
+  if (total === 0) return <Card style={{ background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}><Empty dark>Nenhum check-in registrado ainda.</Empty></Card>;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {ordem.map((f, i) => {
+        const aberta = abertas[i] ?? f.atual;
+        const treinos = [...f.etapas].reverse().flatMap((e) => e.treinos);
+        return (
+          <Card key={i} style={{ background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)", padding: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }} onClick={() => setAbertas({ ...abertas, [i]: !aberta })}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <FaixaHistorico faixas={faixas} faixaId={f.faixaId} faixaNome={f.faixaNome} grau={f.etapas[f.etapas.length - 1].grau} textColor="#F5F3EC" />
+                <div style={{ fontSize: 12, color: "#9B9891", marginTop: 4 }}>{f.totalTreinos} treino(s){f.atual ? " na faixa atual" : ""}</div>
+              </div>
+              <ChevronRight size={16} color="#9B9891" style={{ transform: aberta ? "rotate(90deg)" : "none", transition: "transform 0.15s", flexShrink: 0 }} />
+            </div>
+            {aberta && (
+              treinos.length === 0 ? (
+                <div style={{ fontSize: 12.5, color: "#9B9891", marginTop: 10 }}>Nenhum treino nesta faixa ainda.</div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
+                  {treinos.map((c) => {
+                    const sessao = sessoes.find((s) => s.id === c.sessaoId);
+                    const turma = sessao && turmas.find((t) => t.id === sessao.treinoId);
+                    return (
+                      <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13.5 }}>
+                        <CalendarCheck size={15} color="#C9A227" />
+                        <span style={{ fontWeight: 600, color: "#F5F3EC" }}>{turma?.nome || "Treino"}</span>
+                        <span style={{ color: "#9B9891" }}>{new Date(c.dataHora).toLocaleString("pt-BR")}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )
+            )}
+          </Card>
+        );
+      })}
+    </div>
+  );
+}
+
+// Lista curta das graduações registradas, pro card do aluno na tela do professor.
+function HistoricoGraduacoesLista({ alunoId, graduacoes, corTexto, corSuave }) {
+  const regs = (graduacoes || []).filter((g) => g.alunoId === alunoId).sort((a, b) => b.data.localeCompare(a.data));
+  if (regs.length === 0) return <div style={{ fontSize: 11.5, color: corSuave, marginTop: 8 }}>Nenhuma graduação registrada ainda.</div>;
+  const rotulo = (nome, grau) => `${nome || "—"}${grau ? ` ${grau}º grau` : ""}`;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 8 }}>
+      <div style={{ fontSize: 10.5, fontWeight: 700, color: corSuave, textTransform: "uppercase", letterSpacing: 0.4 }}>Histórico de graduações</div>
+      {regs.map((g) => (
+        <div key={g.id} style={{ fontSize: 12, color: corTexto }}>
+          <span style={{ color: corSuave }}>{dataCurtaBR(g.data)}</span> · {rotulo(g.faixaAnteriorNome, g.grauAnterior)} → <b>{rotulo(g.faixaNovaNome, g.grauNovo)}</b>
+          {g.tipo === "ajuste" && <span style={{ color: corSuave }}> (ajuste no cadastro)</span>}
+          {g.aulas != null && g.tipo !== "ajuste" && <span style={{ color: corSuave }}> · {g.aulas} aula(s)</span>}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function EvolucaoFaixas({ faixas, faixaId, grau, checkinsDesdeGraduacao, categoria }) {
@@ -1057,6 +1235,31 @@ function ConfirmButton({ onConfirm, children, icon = Check, variant = "primary",
   }
   return (
     <Button icon={icon} variant={variant} onClick={() => setConfirmando(true)}>{children}</Button>
+  );
+}
+
+// Botões "+1 grau" / "Graduar faixa" do card do aluno. Graduar fica gravado no histórico do aluno,
+// então pede confirmação mostrando pra qual faixa/grau ele vai antes de salvar.
+function GraduarControle({ aluno, faixas, onGraduar, botaoStyle, corTexto }) {
+  const [tipo, setTipo] = useState(null);
+  const idx = faixas.findIndex((f) => f.id === aluno.faixaId);
+  const faixaAtual = faixas[idx] || faixas[0];
+  const proxima = faixas[idx + 1];
+  if (tipo) {
+    const destino = tipo === "grau" ? `${aluno.grau + 1}º grau da faixa ${faixaAtual.nome}` : `faixa ${proxima.nome}`;
+    return (
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
+        <span style={{ fontSize: 12.5, fontWeight: 600, color: corTexto }}>Graduar {aluno.nome.split(" ")[0]} para o(a) {destino}?</span>
+        <Button variant="gold" onClick={() => { onGraduar(tipo); setTipo(null); }}>Sim, graduar</Button>
+        <Button variant="ghost" style={botaoStyle} onClick={() => setTipo(null)}>Cancelar</Button>
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+      {faixaAtual?.grausMax > 0 && <Button variant="ghost" style={botaoStyle} onClick={() => setTipo("grau")} disabled={aluno.grau >= faixaAtual.grausMax}>+1 grau</Button>}
+      <Button variant="ghost" style={botaoStyle} onClick={() => setTipo("faixa")} disabled={!proxima}>Graduar faixa</Button>
+    </div>
   );
 }
 
@@ -1972,7 +2175,8 @@ function AdminView({ data, save, onSairAdmin }) {
       alert(e.message);
     }
     const alunos = data.alunos.map((a) => (a.id === id ? { ...a, ...form, ...authPatch } : a));
-    await save({ ...data, alunos });
+    const registro = anterior && registroGraduacao(data.faixas, data.checkins, anterior, { ...anterior, ...form }, { tipo: "ajuste", registradoPor: "Administração" });
+    await save({ ...data, alunos, ...(registro ? { graduacoes: [...(data.graduacoes || []), registro] } : {}) });
     setEditandoAluno(null);
   };
   const removerAluno = async (id) => {
@@ -5937,11 +6141,9 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
                       <div style={secaoStyle}>
                         <div style={tituloSecaoStyle}>🥋 Graduação</div>
                         <div style={{ fontSize: 11.5, color: light ? LIGHT.muted : "#9B9891", marginBottom: 8 }}>{progressoGraduacaoTexto(data.faixas, a.faixaId, a.grau, aulasDesdeGraduacao(a, data.checkins), categoriaEtaria(a.dataNascimento))} · {aulasDesdeGraduacao(a, data.checkins)} aula(s) desde a última graduação</div>
-                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-                          {faixaAtual?.grausMax > 0 && <Button variant="ghost" onClick={() => graduar(a.id, "grau")} disabled={a.grau >= faixaAtual.grausMax} style={ghostEscuro}>+1 grau</Button>}
-                          <Button variant="ghost" onClick={() => graduar(a.id, "faixa")} disabled={idx >= data.faixas.length - 1} style={ghostEscuro}>Graduar faixa</Button>
-                        </div>
+                        <GraduarControle aluno={a} faixas={data.faixas} onGraduar={(tipo) => graduar(a.id, tipo)} botaoStyle={ghostEscuro} corTexto={light ? LIGHT.text : "#F5F3EC"} />
                         <AjustarAulasInline onAjustar={(delta) => ajustarAulasManualmente(a.id, delta)} />
+                        <HistoricoGraduacoesLista alunoId={a.id} graduacoes={data.graduacoes} corTexto={light ? LIGHT.text : "#F5F3EC"} corSuave={light ? LIGHT.muted : "#9B9891"} />
                       </div>
 
                       {sessaoAtiva && (
@@ -6284,7 +6486,8 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
       alert(e.message);
     }
     const alunos = data.alunos.map((a) => (a.id === id ? { ...a, ...form, ...authPatch } : a));
-    await save({ ...data, alunos });
+    const registro = anterior && registroGraduacao(data.faixas, data.checkins, anterior, { ...anterior, ...form }, { tipo: "ajuste", professorId: prof.id, registradoPor: `Prof. ${prof.nome}` });
+    await save({ ...data, alunos, ...(registro ? { graduacoes: [...(data.graduacoes || []), registro] } : {}) });
     setEditandoAluno(null);
   };
   const resetarSenhaAlunoProf = async (id) => {
@@ -6330,19 +6533,25 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
   };
 
   const graduar = async (alunoId, tipo) => {
+    let registro = null;
     const alunos = data.alunos.map((a) => {
       if (a.id !== alunoId) return a;
       const idx = data.faixas.findIndex((f) => f.id === a.faixaId);
       const faixaAtual = data.faixas[idx] || data.faixas[0];
+      let novo = a;
       if (tipo === "grau") {
         if (!faixaAtual.grausMax) return a;
-        return { ...a, grau: Math.min(a.grau + 1, faixaAtual.grausMax), checkinsDesdeGraduacao: 0, ultimaGraduacaoEm: new Date().toISOString(), ajusteAulas: 0 };
+        novo = { ...a, grau: Math.min(a.grau + 1, faixaAtual.grausMax), checkinsDesdeGraduacao: 0, ultimaGraduacaoEm: new Date().toISOString(), ajusteAulas: 0 };
+      } else {
+        const proxima = data.faixas[idx + 1];
+        if (!proxima) return a;
+        novo = { ...a, faixaId: proxima.id, grau: 0, checkinsDesdeGraduacao: 0, ultimaGraduacaoEm: new Date().toISOString(), ajusteAulas: 0 };
       }
-      const proxima = data.faixas[idx + 1];
-      if (!proxima) return a;
-      return { ...a, faixaId: proxima.id, grau: 0, checkinsDesdeGraduacao: 0, ultimaGraduacaoEm: new Date().toISOString(), ajusteAulas: 0 };
+      // A faixa/grau anterior fica guardada no histórico (o cadastro do aluno só tem a atual).
+      registro = registroGraduacao(data.faixas, data.checkins, a, novo, { professorId: prof.id, registradoPor: `Prof. ${prof.nome}` });
+      return novo;
     });
-    await save({ ...data, alunos });
+    await save({ ...data, alunos, ...(registro ? { graduacoes: [...(data.graduacoes || []), registro] } : {}) });
   };
   const darBaixaPagamento = (alunoId, valorProdutos, valorPago, dataPagamento) => darBaixaEm(data, save, alunoId, valorProdutos, valorPago, dataPagamento);
   const desfazerBaixaPagamento = (alunoId) => desfazerBaixaEm(data, save, alunoId);
@@ -6572,11 +6781,9 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
                       <div style={secaoStyle}>
                         <div style={tituloSecaoStyle}>🥋 Graduação</div>
                         <div style={{ fontSize: 11.5, color: "#9B9891", marginBottom: 8 }}>{progressoGraduacaoTexto(data.faixas, a.faixaId, a.grau, aulasDesdeGraduacao(a, data.checkins), categoriaEtaria(a.dataNascimento))} · {aulasDesdeGraduacao(a, data.checkins)} aula(s) desde a última graduação</div>
-                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-                          {faixaAtual?.grausMax > 0 && <Button variant="ghost" style={ghostDark} onClick={() => graduar(a.id, "grau")} disabled={a.grau >= faixaAtual.grausMax}>+1 grau</Button>}
-                          <Button variant="ghost" style={ghostDark} onClick={() => graduar(a.id, "faixa")} disabled={idx >= data.faixas.length - 1}>Graduar faixa</Button>
-                        </div>
+                        <GraduarControle aluno={a} faixas={data.faixas} onGraduar={(tipo) => graduar(a.id, tipo)} botaoStyle={ghostDark} corTexto="#F5F3EC" />
                         <AjustarAulasInline onAjustar={(delta) => ajustarAulasManualmente(a.id, delta)} />
+                        <HistoricoGraduacoesLista alunoId={a.id} graduacoes={data.graduacoes} corTexto="#F5F3EC" corSuave="#9B9891" />
                       </div>
 
                       {sessaoAtiva && (
@@ -7195,6 +7402,7 @@ function AlunoDashboard({ data, save, aluno, onSair }) {
   };
 
   const meusCheckins = data.checkins.filter((c) => c.alunoId === aluno.id).sort((a, b) => b.dataHora.localeCompare(a.dataHora));
+  const jornada = jornadaGraduacao(aluno, data.graduacoes, data.checkins);
   const { emDia, vencimento, plano } = statusPagamento(aluno, data.planos);
   const faixaAtual = data.faixas.find((f) => f.id === aluno.faixaId);
   const localCheckin = localCheckinDe(aluno, data);
@@ -7417,26 +7625,12 @@ function AlunoDashboard({ data, save, aluno, onSair }) {
           <div style={{ marginBottom: 14 }}>
             <EvolucaoFaixas faixas={data.faixas} faixaId={aluno.faixaId} grau={aluno.grau} checkinsDesdeGraduacao={aulasDesdeGraduacao(aluno, data.checkins)} categoria={categoriaEtaria(aluno.dataNascimento)} />
           </div>
-          <div style={{ ...blockTitleStyle, margin: "0 0 10px", color: "#F5F3EC" }}>Histórico de treinos</div>
-          <Card style={{ background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}>
-            {meusCheckins.length === 0 ? (
-              <Empty dark>Nenhum check-in registrado ainda.</Empty>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {meusCheckins.map((c) => {
-                  const sessao = data.sessoes.find((s) => s.id === c.sessaoId);
-                  const turma = sessao && data.turmas.find((t) => t.id === sessao.treinoId);
-                  return (
-                    <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13.5 }}>
-                      <CalendarCheck size={15} color="#C9A227" />
-                      <span style={{ fontWeight: 600, color: "#F5F3EC" }}>{turma?.nome || "Treino"}</span>
-                      <span style={{ color: "#9B9891" }}>{new Date(c.dataHora).toLocaleString("pt-BR")}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </Card>
+          <div style={{ ...blockTitleStyle, margin: "0 0 10px", color: "#F5F3EC" }}>Histórico de faixas</div>
+          <div style={{ marginBottom: 14 }}>
+            <HistoricoFaixas jornada={jornada} faixas={data.faixas} />
+          </div>
+          <div style={{ ...blockTitleStyle, margin: "0 0 10px", color: "#F5F3EC" }}>Histórico de treinos · {meusCheckins.length}</div>
+          <HistoricoTreinos jornada={jornada} faixas={data.faixas} sessoes={data.sessoes} turmas={data.turmas} />
         </div>
 
         {/* PÁGINA 4 — AVISOS */}
