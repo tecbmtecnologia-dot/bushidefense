@@ -102,6 +102,17 @@ const proximoCodigoAluno = (alunos) => Math.max(0, ...alunos.map((a) => a.codigo
 const formatarCodigoAluno = (n) => "Nº " + String(n).padStart(3, "0");
 // Preenche o código só de quem ainda não tem (alunos já cadastrados antes dessa função existir),
 // dando os números mais baixos pra quem matriculou primeiro. Roda uma única vez, na carga inicial.
+/* Estado após excluir uma turma. Aluno com aula particular vinculada a ela perde o vínculo —
+   senão o próximo save de alunos reenviaria um turma_id que não existe mais. As sessões de
+   check-in da turma ficam como estão (o banco zera turma_id nelas: 2026-10-12_excluir_turma.sql). */
+function dadosSemTurma(data, turmaId) {
+  const next = { ...data, turmas: data.turmas.filter((t) => t.id !== turmaId) };
+  if (data.alunos.some((a) => a.turmaId === turmaId)) {
+    next.alunos = data.alunos.map((a) => (a.turmaId === turmaId ? { ...a, turmaId: null } : a));
+  }
+  return next;
+}
+
 function atribuirCodigosFaltantes(alunos) {
   if (alunos.every((a) => a.codigo)) return alunos;
   const usados = new Set(alunos.filter((a) => a.codigo).map((a) => a.codigo));
@@ -2029,7 +2040,7 @@ function AdminView({ data, save, onSairAdmin }) {
 
   const addTurma = async (form) => { const t = { id: uid(), ...form }; await save({ ...data, turmas: [...data.turmas, t] }); setNovaTurma(false); };
   const editarTurma = async (id, form) => { const turmas = data.turmas.map((t) => (t.id === id ? { ...t, ...form } : t)); await save({ ...data, turmas }); setEditandoTurma(null); };
-  const removerTurma = async (id) => { await save({ ...data, turmas: data.turmas.filter((t) => t.id !== id) }); };
+  const removerTurma = async (id) => { await save(dadosSemTurma(data, id)); };
 
   const tabs = [
     { id: "dashboard", label: "Visão geral" },
@@ -4938,7 +4949,7 @@ function TurmasProfessor({ data, save, prof }) {
     setEditando(null);
   };
   const remover = async (id) => {
-    await save({ ...data, turmas: data.turmas.filter((t) => t.id !== id) });
+    await save(dadosSemTurma(data, id));
   };
 
   return (
