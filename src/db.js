@@ -90,20 +90,16 @@ function fromDb(entity, row) {
 }
 
 /*
- * Upsert das linhas em `items` + remoção das que não existem mais em `todosOsItens` (cobre
- * criar, editar e excluir). `todosOsItens` é a lista completa da entidade (default: `items`) —
- * só existe como parâmetro separado pra permitir mandar um upsert PARCIAL (ex: só a linha que
- * mudou) sem perder o cálculo de exclusão, que precisa saber o conjunto completo de ids válidos.
+ * Upsert das linhas em `items` + remoção dos ids em `idsRemovidos` (cobre criar, editar e
+ * excluir). Só apaga o que ESTA ação removeu (ver `removidos` em saveAll) — nunca "tudo que está
+ * no banco e não está na lista da tela": a lista da tela pode estar velha (painel aberto desde
+ * antes de outra pessoa cadastrar algo, em outra aba/computador ou pelo professor), e aí o save
+ * apagava os cadastros novos dos outros. Foi assim que alunos sumiram em 2026-10-18.
  */
-async function syncTable(entity, items, todosOsItens) {
+async function syncTable(entity, items, idsRemovidos = []) {
   const rows = items.map((it) => toDb(entity, it, { omitirIndefinidos: true }));
-  const existing = await pg.selectAll(entity, "select=id");
-  const existingIds = (existing || []).map((r) => r.id);
-  const nextIds = (todosOsItens || items).map((it) => it.id);
-  const toDelete = existingIds.filter((id) => !nextIds.includes(id));
-
   if (rows.length) await pg.upsert(entity, rows);
-  if (toDelete.length) await pg.deleteIn(entity, toDelete);
+  if (idsRemovidos.length) await pg.deleteIn(entity, idsRemovidos);
 }
 
 // Antes do login (ou pra papel sem acesso a uma tabela) a RLS nega a leitura — trata isso como
@@ -217,6 +213,13 @@ export async function saveAll(next, anterior) {
     const anterioresPorId = new Map((listaAnterior || []).map((it) => [it.id, it]));
     return lista.filter((it) => anterioresPorId.get(it.id) !== it);
   };
+  // Ids que estavam na lista anterior e saíram da nova — ou seja, o que a pessoa excluiu agora.
+  const removidos = (lista, listaAnterior) => {
+    const ids = new Set((lista || []).map((it) => it.id));
+    return (listaAnterior || []).filter((it) => !ids.has(it.id)).map((it) => it.id);
+  };
+  // Atalho pro caso comum: só as linhas alteradas + só as excluídas nesta ação.
+  const sync = (entity, chave) => syncTable(entity, soAlterados(next[chave] || [], anterior?.[chave]), removidos(next[chave], anterior?.[chave]));
 
   const tarefas = [];
   if (mudou("academia")) {
@@ -224,33 +227,46 @@ export async function saveAll(next, anterior) {
   }
   if (mudou("faixas")) {
     const faixasComOrdem = next.faixas.map((f, i) => ({ ...f, ordem: i }));
-    tarefas.push({ nome: "faixas", fn: () => syncTable("faixas", faixasComOrdem) });
+    tarefas.push({ nome: "faixas", fn: () => syncTable("faixas", faixasComOrdem, removidos(next.faixas, anterior?.faixas)) });
   }
-  if (mudou("planos")) tarefas.push({ nome: "planos", fn: () => syncTable("planos", next.planos) });
+  if (mudou("planos")) tarefas.push({ nome: "planos", fn: () => sync("planos", "planos") });
   // turmas, sessoes_checkin, avisos, videos e produtos têm a mesma RLS "admin ou professor dono"
   // (2026-09-11_rls_fase2b.sql) — mesmo motivo de "professores" abaixo: só as linhas alteradas.
-  if (mudou("turmas")) tarefas.push({ nome: "turmas", fn: () => syncTable("turmas", soAlterados(next.turmas, anterior?.turmas), next.turmas) });
+  if (mudou("turmas")) tarefas.push({ nome: "turmas", fn: () => sync("turmas", "turmas") });
   if (mudou("professores")) {
     // Manda pro banco só as linhas de professor que de fato mudaram (não a tabela inteira): um
     // professor sem ser admin só tem permissão (RLS) pra escrever a própria linha, e o upsert é
     // um único INSERT ... ON CONFLICT DO UPDATE — se ele incluir a linha de outro professor sem
     // ter mudado nada nela, o Postgres AINDA testa a política daquela linha e rejeita a operação
     // inteira. Comparação por referência funciona pelo mesmo motivo do `mudou` acima.
-    tarefas.push({ nome: "professores", fn: () => syncTable("professores", soAlterados(next.professores, anterior?.professores), next.professores) });
+    tarefas.push({ nome: "professores", fn: () => sync("professores", "professores") });
   }
   if (mudou("alunos")) {
-    tarefas.push({ nome: "alunos", fn: () => syncTable("alunos", next.alunos) });
-    // Pagamentos ficam dentro de cada aluno, então reenviamos junto sempre que o array de alunos mudar.
-    const todosPagamentos = next.alunos.flatMap((a) => (a.pagamentos || []).map((p) => ({ ...p, alunoId: a.id })));
-    tarefas.push({ nome: "pagamentos", fn: () => syncTable("pagamentos", todosPagamentos) });
+    // Só os alunos alterados: reenviar a lista inteira desfaria, com a versão velha da tela, o que
+    // outra pessoa mudou nesse meio-tempo (ex: o aluno aceitou o termo ou preencheu a anamnese).
+    const alterados = soAlterados(next.alunos, anterior?.alunos);
+    tarefas.push({ nome: "alunos", fn: () => syncTable("alunos", alterados, removidos(next.alunos, anterior?.alunos)) });
+    // Pagamentos ficam dentro de cada aluno: grava os dos alunos alterados e apaga só os que
+    // sumiram de um aluno alterado (ou junto com um aluno excluído) nesta ação.
+    const comAluno = (a) => (a.pagamentos || []).map((p) => ({ ...p, alunoId: a.id }));
+    const pagamentosNovos = alterados.flatMap(comAluno);
+    const idsMantidos = new Set(pagamentosNovos.map((p) => p.id));
+    const idsAlterados = new Set(alterados.map((a) => a.id));
+    const idsRemovidosAlunos = new Set(removidos(next.alunos, anterior?.alunos));
+    const pagamentosRemovidos = (anterior?.alunos || [])
+      .filter((a) => idsAlterados.has(a.id) || idsRemovidosAlunos.has(a.id))
+      .flatMap(comAluno)
+      .filter((p) => !idsMantidos.has(p.id))
+      .map((p) => p.id);
+    tarefas.push({ nome: "pagamentos", fn: () => syncTable("pagamentos", pagamentosNovos, pagamentosRemovidos) });
   }
-  if (mudou("sessoes")) tarefas.push({ nome: "sessoes_checkin", fn: () => syncTable("sessoes_checkin", soAlterados(next.sessoes, anterior?.sessoes), next.sessoes) });
-  if (mudou("checkins")) tarefas.push({ nome: "checkins", fn: () => syncTable("checkins", next.checkins) });
-  if (mudou("avisos")) tarefas.push({ nome: "avisos", fn: () => syncTable("avisos", soAlterados(next.avisos || [], anterior?.avisos), next.avisos || []) });
-  if (mudou("videos")) tarefas.push({ nome: "videos", fn: () => syncTable("videos", soAlterados(next.videos || [], anterior?.videos), next.videos || []) });
-  if (mudou("unidades")) tarefas.push({ nome: "unidades", fn: () => syncTable("unidades", next.unidades || []) });
-  if (mudou("produtos")) tarefas.push({ nome: "produtos", fn: () => syncTable("produtos", soAlterados(next.produtos || [], anterior?.produtos), next.produtos || []) });
-  if (mudou("vendas")) tarefas.push({ nome: "vendas", fn: () => syncTable("vendas", next.vendas || []) });
+  if (mudou("sessoes")) tarefas.push({ nome: "sessoes_checkin", fn: () => sync("sessoes_checkin", "sessoes") });
+  if (mudou("checkins")) tarefas.push({ nome: "checkins", fn: () => sync("checkins", "checkins") });
+  if (mudou("avisos")) tarefas.push({ nome: "avisos", fn: () => sync("avisos", "avisos") });
+  if (mudou("videos")) tarefas.push({ nome: "videos", fn: () => sync("videos", "videos") });
+  if (mudou("unidades")) tarefas.push({ nome: "unidades", fn: () => sync("unidades", "unidades") });
+  if (mudou("produtos")) tarefas.push({ nome: "produtos", fn: () => sync("produtos", "produtos") });
+  if (mudou("vendas")) tarefas.push({ nome: "vendas", fn: () => sync("vendas", "vendas") });
   // Histórico só cresce: grava as linhas novas e nunca apaga as que já estão no banco (nem as de
   // alunos de outro professor, que a RLS nem deixa este usuário ver). Some só junto com o aluno
   // (FK on delete cascade).
@@ -269,8 +285,8 @@ export async function saveAll(next, anterior) {
   if (erros.length) throw new Error(erros.join(" | "));
 }
 
-// Usado só pra migração automática do número de cadastro (atribuirCodigosFaltantes) — sincroniza
-// apenas a tabela "alunos", sem disparar o resync geral das outras ~12 tabelas.
+// Usado só pra migração automática do número de cadastro (atribuirCodigosFaltantes) — grava
+// apenas os alunos passados, sem apagar nada e sem disparar o resync geral das outras tabelas.
 export async function saveAlunos(alunos) {
   await syncTable("alunos", alunos);
 }

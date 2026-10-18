@@ -1444,8 +1444,9 @@ export default function App({ modo = "admin" }) {
       // Numerar automaticamente só faz sentido vendo a lista inteira de alunos — com RLS,
       // isso só acontece numa sessão de admin (professor/aluno só recebem o próprio recorte).
       if (role === "admin" && fresh.alunos.some((a) => !a.codigo)) {
+        const antes = new Set(fresh.alunos);
         fresh.alunos = atribuirCodigosFaltantes(fresh.alunos);
-        try { await saveAlunos(fresh.alunos); } catch (_) { /* atualiza a lista mesmo assim; tenta salvar de novo na próxima carga */ }
+        try { await saveAlunos(fresh.alunos.filter((a) => !antes.has(a))); } catch (_) { /* atualiza a lista mesmo assim; tenta salvar de novo na próxima carga */ }
       }
       setData(fresh);
     } catch (e) {
