@@ -138,13 +138,24 @@ export const pg = {
     }),
 };
 
+// Token de quem está logado (papel "authenticated"). O Storage só aceita upload/remoção de
+// usuários logados — com a chave publicável (papel "anon") qualquer um conseguiria apagar arquivos.
+async function tokenAtual() {
+  try {
+    const { data } = await supabaseAuth.getSession();
+    if (data?.session?.access_token) return data.session.access_token;
+  } catch (_) {}
+  return SUPABASE_KEY;
+}
+
 export async function uploadArquivo(bucket, file, onProgress) {
   const nomeArquivo = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+  const token = await tokenAtual();
   await new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `${STORAGE_BASE}/object/${bucket}/${nomeArquivo}`);
     xhr.setRequestHeader("apikey", SUPABASE_KEY);
-    xhr.setRequestHeader("Authorization", `Bearer ${SUPABASE_KEY}`);
+    xhr.setRequestHeader("Authorization", `Bearer ${token}`);
     xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
     xhr.upload.onprogress = (e) => { if (onProgress && e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100)); };
     xhr.onload = () => { if (xhr.status >= 200 && xhr.status < 300) resolve(); else reject(new Error(`Falha no upload (${xhr.status}): ${xhr.responseText}`)); };
@@ -162,7 +173,7 @@ export async function removerArquivo(bucket, urlPublica) {
     const nomeArquivo = urlPublica.slice(idx + marcador.length);
     await fetch(`${STORAGE_BASE}/object/${bucket}/${nomeArquivo}`, {
       method: "DELETE",
-      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${await tokenAtual()}` },
     });
   } catch (_) {
     // Se falhar, não é grave — o vídeo já foi marcado como visto e não vai mais aparecer no app.
