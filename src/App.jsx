@@ -5241,50 +5241,77 @@ function ProdutosAluno({ produtos }) {
   );
 }
 
+// PDFs enviados pelo professor principal (tabela `historia_academia`, linha única id = 1): a
+// história da academia (colunas `pdf`/`pdf_nome`) e as regras do tatame (`regras_pdf`/
+// `regras_pdf_nome`). Sem a tabela no banco (ex: Cia Paulista) a consulta falha e nada aparece.
+// Do lado do aluno só o nome vem de cara; o PDF em si só é baixado quando o card é aberto.
+function usePdfProfessorPrincipal(coluna, aberto) {
+  const [pdfNome, setPdfNome] = useState("");
+  const [pdf, setPdf] = useState(null);
+  const [status, setStatus] = useState("");
+  useEffect(() => {
+    let ativo = true;
+    pg.select("historia_academia", `select=${coluna}_nome&id=eq.1&${coluna}=not.is.null`)
+      .then((rows) => { if (ativo) setPdfNome(rows?.[0]?.[`${coluna}_nome`] || ""); })
+      .catch(() => {});
+    return () => { ativo = false; };
+  }, [coluna]);
+  useEffect(() => {
+    if (!aberto || !pdfNome || pdf) return;
+    let ativo = true;
+    setStatus("carregando");
+    pg.select("historia_academia", `select=${coluna}&id=eq.1`)
+      .then((rows) => { if (ativo) { setPdf(rows?.[0]?.[coluna] || null); setStatus(""); } })
+      .catch(() => { if (ativo) setStatus("erro"); });
+    return () => { ativo = false; };
+  }, [coluna, aberto, pdfNome, pdf]);
+  return { pdfNome, pdf, status };
+}
+
+function LinkPdfProfessorPrincipal({ pdfNome, pdf, status, texto }) {
+  return (
+    <div style={{ marginTop: 10 }}>
+      {status === "carregando" ? (
+        <span style={{ fontSize: 12.5, color: "#9B9891" }}>Carregando o PDF...</span>
+      ) : status === "erro" ? (
+        <span style={{ fontSize: 12.5, color: "#E57373" }}>Não foi possível carregar o PDF. Verifique a internet e tente de novo.</span>
+      ) : pdf ? (
+        <a href={pdf} target="_blank" rel="noreferrer" onClick={(e) => { e.preventDefault(); abrirPdfDataUrl(pdf); }} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "#C9A227" }}>
+          📄 {texto} ({pdfNome})
+        </a>
+      ) : null}
+    </div>
+  );
+}
+
+// Card "Regras do tatame" do aluno: imagem do admin (Configurações) + PDF do professor principal.
 function RegrasTatameAluno({ imagem }) {
   const [aberto, setAberto] = useState(false);
-  if (!imagem) return null;
+  const regrasPdf = usePdfProfessorPrincipal("regras_pdf", aberto);
+  if (!imagem && !regrasPdf.pdfNome) return null;
   return (
     <Card style={{ marginBottom: 14, background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}>
       <button onClick={() => setAberto((v) => !v)} style={{ width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <span style={{ ...blockTitleStyle, color: "#FFFFFF" }}>📜 Regras do tatame</span>
         <span style={{ fontSize: 18, color: "#C9A227" }}>{aberto ? "−" : "+"}</span>
       </button>
-      {aberto && (
+      {aberto && imagem && (
         <div style={{ marginTop: 10 }}>
           <img src={imagem} alt="Regras do tatame" style={{ width: "100%", borderRadius: 10, display: "block" }} />
         </div>
       )}
+      {aberto && regrasPdf.pdfNome && <LinkPdfProfessorPrincipal {...regrasPdf} texto="Ler as regras do tatame" />}
     </Card>
   );
 }
 
 // Card "Sobre a <academia>" do aluno: texto do admin (Configurações) + PDF da história enviado
-// pelo professor principal (tabela `historia_academia`). Sem a tabela no banco (ex: Cia Paulista),
-// a consulta falha e o card fica só com o texto. O PDF em si só é baixado quando o card é aberto.
+// pelo professor principal.
 function SobreEquipeAluno({ texto, nomeEquipe }) {
   const [aberto, setAberto] = useState(false);
-  const [pdfNome, setPdfNome] = useState("");
-  const [pdf, setPdf] = useState(null);
-  const [statusPdf, setStatusPdf] = useState("");
-  useEffect(() => {
-    let ativo = true;
-    pg.select("historia_academia", "select=pdf_nome&id=eq.1&pdf=not.is.null")
-      .then((rows) => { if (ativo) setPdfNome(rows?.[0]?.pdf_nome || ""); })
-      .catch(() => {});
-    return () => { ativo = false; };
-  }, []);
-  useEffect(() => {
-    if (!aberto || !pdfNome || pdf) return;
-    let ativo = true;
-    setStatusPdf("carregando");
-    pg.select("historia_academia", "select=pdf&id=eq.1")
-      .then((rows) => { if (ativo) { setPdf(rows?.[0]?.pdf || null); setStatusPdf(""); } })
-      .catch(() => { if (ativo) setStatusPdf("erro"); });
-    return () => { ativo = false; };
-  }, [aberto, pdfNome, pdf]);
+  const historiaPdf = usePdfProfessorPrincipal("pdf", aberto);
   const temTexto = !!(texto && texto.trim());
-  if (!temTexto && !pdfNome) return null;
+  if (!temTexto && !historiaPdf.pdfNome) return null;
   return (
     <Card style={{ marginBottom: 14, background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}>
       <button onClick={() => setAberto((v) => !v)} style={{ width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -5294,49 +5321,37 @@ function SobreEquipeAluno({ texto, nomeEquipe }) {
       {aberto && temTexto && (
         <div style={{ marginTop: 10, fontSize: 13.5, lineHeight: 1.55, color: "#C4C0B4", whiteSpace: "pre-wrap" }}>{texto}</div>
       )}
-      {aberto && pdfNome && (
-        <div style={{ marginTop: 10 }}>
-          {statusPdf === "carregando" ? (
-            <span style={{ fontSize: 12.5, color: "#9B9891" }}>Carregando a história...</span>
-          ) : statusPdf === "erro" ? (
-            <span style={{ fontSize: 12.5, color: "#E57373" }}>Não foi possível carregar o PDF. Verifique a internet e tente de novo.</span>
-          ) : pdf ? (
-            <a href={pdf} target="_blank" rel="noreferrer" onClick={(e) => { e.preventDefault(); abrirPdfDataUrl(pdf); }} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "#C9A227" }}>
-              📄 Ler a história da {nomeEquipe || "equipe"} ({pdfNome})
-            </a>
-          ) : null}
-        </div>
-      )}
+      {aberto && historiaPdf.pdfNome && <LinkPdfProfessorPrincipal {...historiaPdf} texto={`Ler a história da ${nomeEquipe || "equipe"}`} />}
     </Card>
   );
 }
 
-// PDF da história da academia — só aparece pro professor principal (o dono da linha em
-// `historia_academia`; a RLS também só deixa ele gravar). Fica fora do `data` geral pra o PDF não
-// ser baixado em todo carregamento do app.
-const HISTORIA_PDF_MAX_MB = 10;
-function HistoriaAcademiaProfessor({ prof, nomeEquipe }) {
+// Envio de um dos PDFs acima — só aparece pro professor principal (o dono da linha; a RLS também
+// só deixa ele gravar). Fica fora do `data` geral pra o PDF não ser baixado em todo carregamento.
+const PDF_PROFESSOR_PRINCIPAL_MAX_MB = 10;
+function PdfProfessorPrincipal({ prof, coluna, titulo, descricao }) {
   const light = useDesktopLight();
   const fileRef = useRef();
+  const colunaNome = `${coluna}_nome`;
   const [dono, setDono] = useState(false);
   const [pdfNome, setPdfNome] = useState("");
   const [status, setStatus] = useState("");
   const [confirmandoRemocao, setConfirmandoRemocao] = useState(false);
   useEffect(() => {
     let ativo = true;
-    pg.select("historia_academia", "select=professor_id,pdf_nome&id=eq.1")
-      .then((rows) => { if (ativo && rows?.[0]?.professor_id === prof.id) { setDono(true); setPdfNome(rows[0].pdf_nome || ""); } })
+    pg.select("historia_academia", `select=professor_id,${colunaNome}&id=eq.1`)
+      .then((rows) => { if (ativo && rows?.[0]?.professor_id === prof.id) { setDono(true); setPdfNome(rows[0][colunaNome] || ""); } })
       .catch(() => {});
     return () => { ativo = false; };
-  }, [prof.id]);
+  }, [prof.id, colunaNome]);
   if (!dono) return null;
   // PATCH barrado pela RLS não dá erro (só não altera nada) — por isso relê a linha pra confirmar.
   const gravar = async (pdf, nome) => {
     setStatus("salvando");
     try {
-      await pg.update("historia_academia", 1, { pdf, pdf_nome: nome, atualizado_em: new Date().toISOString() });
-      const rows = await pg.select("historia_academia", "select=pdf_nome&id=eq.1");
-      if ((rows?.[0]?.pdf_nome || null) !== nome) throw new Error("não gravou");
+      await pg.update("historia_academia", 1, { [coluna]: pdf, [colunaNome]: nome, atualizado_em: new Date().toISOString() });
+      const rows = await pg.select("historia_academia", `select=${colunaNome}&id=eq.1`);
+      if ((rows?.[0]?.[colunaNome] || null) !== nome) throw new Error("não gravou");
       setPdfNome(nome || "");
       setStatus(nome ? "salvo" : "removido");
     } catch (_) {
@@ -5348,7 +5363,7 @@ function HistoriaAcademiaProfessor({ prof, nomeEquipe }) {
     e.target.value = "";
     if (!f) return;
     if (f.type !== "application/pdf" && !/\.pdf$/i.test(f.name)) { setStatus("nao-pdf"); return; }
-    if (f.size > HISTORIA_PDF_MAX_MB * 1024 * 1024) { setStatus("grande"); return; }
+    if (f.size > PDF_PROFESSOR_PRINCIPAL_MAX_MB * 1024 * 1024) { setStatus("grande"); return; }
     const r = new FileReader();
     r.onload = () => gravar(r.result, f.name);
     r.onerror = () => setStatus("erro");
@@ -5358,9 +5373,9 @@ function HistoriaAcademiaProfessor({ prof, nomeEquipe }) {
   const ghost = ghostEscuroFallback(light);
   return (
     <Card dark style={light ? { marginTop: 16 } : { marginTop: 16, marginBottom: 16, background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}>
-      <div style={light ? blockTitleStyle : { ...blockTitleStyle, color: "#FFFFFF" }}>🥋 História da {nomeEquipe || "equipe"} (PDF)</div>
+      <div style={light ? blockTitleStyle : { ...blockTitleStyle, color: "#FFFFFF" }}>{titulo}</div>
       <p style={{ fontSize: 12.5, color: muted, marginBottom: 12 }}>
-        Envie um PDF contando a história da academia. Ele aparece pra todos os alunos no app, na aba "Mais", em "Sobre a {nomeEquipe || "equipe"}". Só você, como professor principal, pode alterar.
+        {descricao} Só você, como professor principal, pode alterar.
       </p>
       <input ref={fileRef} type="file" accept="application/pdf,.pdf" hidden onChange={onArquivo} />
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -5381,9 +5396,22 @@ function HistoriaAcademiaProfessor({ prof, nomeEquipe }) {
       {status === "salvo" && <p style={{ fontSize: 12.5, color: "#6FCF7F", fontWeight: 600, marginTop: 8 }}>PDF enviado! Os alunos já podem ver.</p>}
       {status === "removido" && <p style={{ fontSize: 12.5, color: "#6FCF7F", fontWeight: 600, marginTop: 8 }}>PDF removido.</p>}
       {status === "nao-pdf" && <p style={{ fontSize: 12.5, color: "#E57373", fontWeight: 600, marginTop: 8 }}>Escolha um arquivo PDF.</p>}
-      {status === "grande" && <p style={{ fontSize: 12.5, color: "#E57373", fontWeight: 600, marginTop: 8 }}>O PDF passa de {HISTORIA_PDF_MAX_MB} MB. Diminua o arquivo e tente de novo.</p>}
+      {status === "grande" && <p style={{ fontSize: 12.5, color: "#E57373", fontWeight: 600, marginTop: 8 }}>O PDF passa de {PDF_PROFESSOR_PRINCIPAL_MAX_MB} MB. Diminua o arquivo e tente de novo.</p>}
       {status === "erro" && <p style={{ fontSize: 12.5, color: "#E57373", fontWeight: 600, marginTop: 8 }}>Erro ao salvar. Verifique a internet e tente de novo.</p>}
     </Card>
+  );
+}
+
+// Os dois PDFs do professor principal, no perfil dele (cada card some sozinho pros outros).
+function PdfsProfessorPrincipal({ prof, nomeEquipe }) {
+  const equipe = nomeEquipe || "equipe";
+  return (
+    <>
+      <PdfProfessorPrincipal prof={prof} coluna="pdf" titulo={`🥋 História da ${equipe} (PDF)`}
+        descricao={`Envie um PDF contando a história da academia. Ele aparece pra todos os alunos no app, na aba "Mais", em "Sobre a ${equipe}".`} />
+      <PdfProfessorPrincipal prof={prof} coluna="regras_pdf" titulo="📜 Regras do tatame (PDF)"
+        descricao={`Envie um PDF com as regras do tatame. Ele aparece pra todos os alunos no app, na aba "Mais", em "Regras do tatame".`} />
+    </>
   );
 }
 
@@ -6414,7 +6442,7 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
         </Card>
       )}
 
-      {tab === "perfil" && <HistoriaAcademiaProfessor prof={prof} nomeEquipe={data.academia.nome} />}
+      {tab === "perfil" && <PdfsProfessorPrincipal prof={prof} nomeEquipe={data.academia.nome} />}
       </div>
       </div>
     </div>
@@ -6792,7 +6820,7 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
             )}
           </Card>
 
-          <HistoriaAcademiaProfessor prof={prof} nomeEquipe={data.academia.nome} />
+          <PdfsProfessorPrincipal prof={prof} nomeEquipe={data.academia.nome} />
 
           <RecadoMestreProfessor data={data} prof={prof} dark={true} />
 
