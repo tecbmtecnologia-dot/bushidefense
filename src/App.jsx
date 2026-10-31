@@ -5259,18 +5259,130 @@ function RegrasTatameAluno({ imagem }) {
   );
 }
 
+// Card "Sobre a <academia>" do aluno: texto do admin (Configurações) + PDF da história enviado
+// pelo professor principal (tabela `historia_academia`). Sem a tabela no banco (ex: Cia Paulista),
+// a consulta falha e o card fica só com o texto. O PDF em si só é baixado quando o card é aberto.
 function SobreEquipeAluno({ texto, nomeEquipe }) {
   const [aberto, setAberto] = useState(false);
-  if (!texto || !texto.trim()) return null;
+  const [pdfNome, setPdfNome] = useState("");
+  const [pdf, setPdf] = useState(null);
+  const [statusPdf, setStatusPdf] = useState("");
+  useEffect(() => {
+    let ativo = true;
+    pg.select("historia_academia", "select=pdf_nome&id=eq.1&pdf=not.is.null")
+      .then((rows) => { if (ativo) setPdfNome(rows?.[0]?.pdf_nome || ""); })
+      .catch(() => {});
+    return () => { ativo = false; };
+  }, []);
+  useEffect(() => {
+    if (!aberto || !pdfNome || pdf) return;
+    let ativo = true;
+    setStatusPdf("carregando");
+    pg.select("historia_academia", "select=pdf&id=eq.1")
+      .then((rows) => { if (ativo) { setPdf(rows?.[0]?.pdf || null); setStatusPdf(""); } })
+      .catch(() => { if (ativo) setStatusPdf("erro"); });
+    return () => { ativo = false; };
+  }, [aberto, pdfNome, pdf]);
+  const temTexto = !!(texto && texto.trim());
+  if (!temTexto && !pdfNome) return null;
   return (
     <Card style={{ marginBottom: 14, background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}>
       <button onClick={() => setAberto((v) => !v)} style={{ width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <span style={{ ...blockTitleStyle, color: "#FFFFFF" }}>🥋 Sobre a {nomeEquipe || "equipe"}</span>
         <span style={{ fontSize: 18, color: "#C9A227" }}>{aberto ? "−" : "+"}</span>
       </button>
-      {aberto && (
+      {aberto && temTexto && (
         <div style={{ marginTop: 10, fontSize: 13.5, lineHeight: 1.55, color: "#C4C0B4", whiteSpace: "pre-wrap" }}>{texto}</div>
       )}
+      {aberto && pdfNome && (
+        <div style={{ marginTop: 10 }}>
+          {statusPdf === "carregando" ? (
+            <span style={{ fontSize: 12.5, color: "#9B9891" }}>Carregando a história...</span>
+          ) : statusPdf === "erro" ? (
+            <span style={{ fontSize: 12.5, color: "#E57373" }}>Não foi possível carregar o PDF. Verifique a internet e tente de novo.</span>
+          ) : pdf ? (
+            <a href={pdf} target="_blank" rel="noreferrer" onClick={(e) => { e.preventDefault(); abrirPdfDataUrl(pdf); }} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "#C9A227" }}>
+              📄 Ler a história da {nomeEquipe || "equipe"} ({pdfNome})
+            </a>
+          ) : null}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// PDF da história da academia — só aparece pro professor principal (o dono da linha em
+// `historia_academia`; a RLS também só deixa ele gravar). Fica fora do `data` geral pra o PDF não
+// ser baixado em todo carregamento do app.
+const HISTORIA_PDF_MAX_MB = 10;
+function HistoriaAcademiaProfessor({ prof, nomeEquipe }) {
+  const light = useDesktopLight();
+  const fileRef = useRef();
+  const [dono, setDono] = useState(false);
+  const [pdfNome, setPdfNome] = useState("");
+  const [status, setStatus] = useState("");
+  const [confirmandoRemocao, setConfirmandoRemocao] = useState(false);
+  useEffect(() => {
+    let ativo = true;
+    pg.select("historia_academia", "select=professor_id,pdf_nome&id=eq.1")
+      .then((rows) => { if (ativo && rows?.[0]?.professor_id === prof.id) { setDono(true); setPdfNome(rows[0].pdf_nome || ""); } })
+      .catch(() => {});
+    return () => { ativo = false; };
+  }, [prof.id]);
+  if (!dono) return null;
+  // PATCH barrado pela RLS não dá erro (só não altera nada) — por isso relê a linha pra confirmar.
+  const gravar = async (pdf, nome) => {
+    setStatus("salvando");
+    try {
+      await pg.update("historia_academia", 1, { pdf, pdf_nome: nome, atualizado_em: new Date().toISOString() });
+      const rows = await pg.select("historia_academia", "select=pdf_nome&id=eq.1");
+      if ((rows?.[0]?.pdf_nome || null) !== nome) throw new Error("não gravou");
+      setPdfNome(nome || "");
+      setStatus(nome ? "salvo" : "removido");
+    } catch (_) {
+      setStatus("erro");
+    }
+  };
+  const onArquivo = (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    if (f.type !== "application/pdf" && !/\.pdf$/i.test(f.name)) { setStatus("nao-pdf"); return; }
+    if (f.size > HISTORIA_PDF_MAX_MB * 1024 * 1024) { setStatus("grande"); return; }
+    const r = new FileReader();
+    r.onload = () => gravar(r.result, f.name);
+    r.onerror = () => setStatus("erro");
+    r.readAsDataURL(f);
+  };
+  const muted = light ? LIGHT.muted : "#9B9891";
+  const ghost = ghostEscuroFallback(light);
+  return (
+    <Card dark style={light ? { marginTop: 16 } : { marginTop: 16, marginBottom: 16, background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}>
+      <div style={light ? blockTitleStyle : { ...blockTitleStyle, color: "#FFFFFF" }}>🥋 História da {nomeEquipe || "equipe"} (PDF)</div>
+      <p style={{ fontSize: 12.5, color: muted, marginBottom: 12 }}>
+        Envie um PDF contando a história da academia. Ele aparece pra todos os alunos no app, na aba "Mais", em "Sobre a {nomeEquipe || "equipe"}". Só você, como professor principal, pode alterar.
+      </p>
+      <input ref={fileRef} type="file" accept="application/pdf,.pdf" hidden onChange={onArquivo} />
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <Button variant="gold" icon={FileText} disabled={status === "salvando"} onClick={() => fileRef.current?.click()}>
+          {status === "salvando" ? "Enviando..." : pdfNome ? "Trocar PDF" : "Enviar PDF"}
+        </Button>
+        {pdfNome && status !== "salvando" && (confirmandoRemocao ? (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 12.5, color: muted, fontWeight: 600 }}>Remover o PDF dos alunos?</span>
+            <Button variant="danger" onClick={() => { setConfirmandoRemocao(false); gravar(null, null); }}>Sim</Button>
+            <Button variant="ghost" style={ghost} onClick={() => setConfirmandoRemocao(false)}>Não</Button>
+          </span>
+        ) : (
+          <Button variant="ghost" icon={X} style={ghost} onClick={() => setConfirmandoRemocao(true)}>Remover</Button>
+        ))}
+        {pdfNome && <span style={{ fontSize: 12.5, color: muted }}>📄 {pdfNome}</span>}
+      </div>
+      {status === "salvo" && <p style={{ fontSize: 12.5, color: "#6FCF7F", fontWeight: 600, marginTop: 8 }}>PDF enviado! Os alunos já podem ver.</p>}
+      {status === "removido" && <p style={{ fontSize: 12.5, color: "#6FCF7F", fontWeight: 600, marginTop: 8 }}>PDF removido.</p>}
+      {status === "nao-pdf" && <p style={{ fontSize: 12.5, color: "#E57373", fontWeight: 600, marginTop: 8 }}>Escolha um arquivo PDF.</p>}
+      {status === "grande" && <p style={{ fontSize: 12.5, color: "#E57373", fontWeight: 600, marginTop: 8 }}>O PDF passa de {HISTORIA_PDF_MAX_MB} MB. Diminua o arquivo e tente de novo.</p>}
+      {status === "erro" && <p style={{ fontSize: 12.5, color: "#E57373", fontWeight: 600, marginTop: 8 }}>Erro ao salvar. Verifique a internet e tente de novo.</p>}
     </Card>
   );
 }
@@ -6301,6 +6413,8 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
           </div>
         </Card>
       )}
+
+      {tab === "perfil" && <HistoriaAcademiaProfessor prof={prof} nomeEquipe={data.academia.nome} />}
       </div>
       </div>
     </div>
@@ -6677,6 +6791,8 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
               </div>
             )}
           </Card>
+
+          <HistoriaAcademiaProfessor prof={prof} nomeEquipe={data.academia.nome} />
 
           <RecadoMestreProfessor data={data} prof={prof} dark={true} />
 
