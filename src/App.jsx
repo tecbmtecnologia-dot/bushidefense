@@ -2499,7 +2499,12 @@ function AdminView({ data, save, onSairAdmin }) {
       {tab === "avisos" && <AvisosAdmin data={data} save={save} />}
       {tab === "unidades" && <UnidadesAdmin data={data} save={save} />}
       {tab === "videos" && <VideosAdmin data={data} save={save} />}
-      {tab === "config" && <ConfiguracoesAdmin data={data} save={save} />}
+      {tab === "config" && (
+        <>
+          <ConfiguracoesAdmin data={data} save={save} />
+          <PdfsProfessorPrincipal admin nomeEquipe={data.academia.nome} />
+        </>
+      )}
       </div>
       </div>
     </div>
@@ -5326,25 +5331,29 @@ function SobreEquipeAluno({ texto, nomeEquipe }) {
   );
 }
 
-// Envio de um dos PDFs acima — só aparece pro professor principal (o dono da linha; a RLS também
-// só deixa ele gravar). Fica fora do `data` geral pra o PDF não ser baixado em todo carregamento.
+// Envio de um dos PDFs acima — só aparece pro professor principal (o dono da linha) e pro admin (a
+// RLS só deixa os dois gravarem). Sem a tabela no banco (ex: Cia Paulista) não aparece pra ninguém.
+// Fica fora do `data` geral pra o PDF não ser baixado em todo carregamento.
 const PDF_PROFESSOR_PRINCIPAL_MAX_MB = 10;
-function PdfProfessorPrincipal({ prof, coluna, titulo, descricao }) {
+function PdfProfessorPrincipal({ prof, admin, coluna, titulo, descricao }) {
   const light = useDesktopLight();
   const fileRef = useRef();
   const colunaNome = `${coluna}_nome`;
-  const [dono, setDono] = useState(false);
+  const [podeEnviar, setPodeEnviar] = useState(false);
   const [pdfNome, setPdfNome] = useState("");
   const [status, setStatus] = useState("");
   const [confirmandoRemocao, setConfirmandoRemocao] = useState(false);
   useEffect(() => {
     let ativo = true;
     pg.select("historia_academia", `select=professor_id,${colunaNome}&id=eq.1`)
-      .then((rows) => { if (ativo && rows?.[0]?.professor_id === prof.id) { setDono(true); setPdfNome(rows[0][colunaNome] || ""); } })
+      .then((rows) => {
+        const linha = rows?.[0];
+        if (ativo && linha && (admin || linha.professor_id === prof?.id)) { setPodeEnviar(true); setPdfNome(linha[colunaNome] || ""); }
+      })
       .catch(() => {});
     return () => { ativo = false; };
-  }, [prof.id, colunaNome]);
-  if (!dono) return null;
+  }, [admin, prof?.id, colunaNome]);
+  if (!podeEnviar) return null;
   // PATCH barrado pela RLS não dá erro (só não altera nada) — por isso relê a linha pra confirmar.
   const gravar = async (pdf, nome) => {
     setStatus("salvando");
@@ -5375,7 +5384,9 @@ function PdfProfessorPrincipal({ prof, coluna, titulo, descricao }) {
     <Card dark style={light ? { marginTop: 16 } : { marginTop: 16, marginBottom: 16, background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}>
       <div style={light ? blockTitleStyle : { ...blockTitleStyle, color: "#FFFFFF" }}>{titulo}</div>
       <p style={{ fontSize: 12.5, color: muted, marginBottom: 12 }}>
-        {descricao} Só você, como professor principal, pode alterar.
+        {descricao} {admin
+          ? `É salvo assim que você envia, sem precisar de "Salvar configurações". O professor principal também pode alterar pelo perfil dele.`
+          : "Só você, como professor principal, e o administrador podem alterar."}
       </p>
       <input ref={fileRef} type="file" accept="application/pdf,.pdf" hidden onChange={onArquivo} />
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -5402,14 +5413,15 @@ function PdfProfessorPrincipal({ prof, coluna, titulo, descricao }) {
   );
 }
 
-// Os dois PDFs do professor principal, no perfil dele (cada card some sozinho pros outros).
-function PdfsProfessorPrincipal({ prof, nomeEquipe }) {
+// Os dois PDFs, no perfil do professor principal e nas Configurações do admin (cada card some
+// sozinho pros outros professores).
+function PdfsProfessorPrincipal({ prof, admin, nomeEquipe }) {
   const equipe = nomeEquipe || "equipe";
   return (
     <>
-      <PdfProfessorPrincipal prof={prof} coluna="pdf" titulo={`🥋 História da ${equipe} (PDF)`}
+      <PdfProfessorPrincipal prof={prof} admin={admin} coluna="pdf" titulo={`🥋 História da ${equipe} (PDF)`}
         descricao={`Envie um PDF contando a história da academia. Ele aparece pra todos os alunos no app, na aba "Mais", em "Sobre a ${equipe}".`} />
-      <PdfProfessorPrincipal prof={prof} coluna="regras_pdf" titulo="📜 Regras do tatame (PDF)"
+      <PdfProfessorPrincipal prof={prof} admin={admin} coluna="regras_pdf" titulo="📜 Regras do tatame (PDF)"
         descricao={`Envie um PDF com as regras do tatame. Ele aparece pra todos os alunos no app, na aba "Mais", em "Regras do tatame".`} />
     </>
   );
