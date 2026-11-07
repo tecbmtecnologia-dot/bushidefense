@@ -5440,6 +5440,7 @@ function CadastroProfessoresPrincipal({ data, save, prof }) {
   const [salvando, setSalvando] = useState(false);
   const [criado, setCriado] = useState(null);
   const [editando, setEditando] = useState(null);
+  const [senhaGerada, setSenhaGerada] = useState(null);
   useEffect(() => {
     let ativo = true;
     pg.select("historia_academia", "select=professor_id&id=eq.1")
@@ -5526,12 +5527,24 @@ function CadastroProfessoresPrincipal({ data, save, prof }) {
     // Apaga também o login, pra o e-mail ficar livre caso ele seja cadastrado de novo.
     if (alvo.authUserId) { try { await excluirContaAuth(alvo.authUserId); } catch (_) {} }
   };
+  // Mesmo fluxo do admin: gera uma senha nova, troca no login e mostra na tela pra repassar.
+  const resetarSenha = async (id) => {
+    const alvo = data.professores.find((p) => p.id === id);
+    if (!alvo?.authUserId) { alert("Este professor ainda não tem login real — cadastre um e-mail pra ele primeiro (em Editar)."); return; }
+    const nova = randomSenha();
+    try {
+      await redefinirSenhaAuth(alvo.authUserId, nova);
+      setSenhaGerada({ id, senha: nova });
+    } catch (e) {
+      alert(`Não foi possível redefinir a senha: ${e.message}`);
+    }
+  };
   const ghost = ghostEscuroFallback(light);
   return (
     <Card dark style={light ? { marginTop: 16 } : { marginTop: 16, marginBottom: 16, background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}>
       <div style={light ? blockTitleStyle : { ...blockTitleStyle, color: "#FFFFFF" }}>👥 Professores</div>
       <p style={{ fontSize: 12.5, color: muted, marginBottom: 12 }}>
-        Como professor principal, você pode cadastrar, editar, desativar e excluir professores. Eles entram no app do professor com o e-mail e a senha definidos aqui. Professor desativado não consegue mais entrar até ser reativado. Excluir apaga o cadastro e o login de vez — só funciona pra quem não tem alunos vinculados nem aulas registradas.
+        Como professor principal, você pode cadastrar, editar, redefinir a senha, desativar e excluir professores. Eles entram no app do professor com o e-mail e a senha definidos aqui. Professor desativado não consegue mais entrar até ser reativado. Excluir apaga o cadastro e o login de vez — só funciona pra quem não tem alunos vinculados nem aulas registradas.
       </p>
       {criado && (
         <p style={{ fontSize: 12.5, color: "#6FCF7F", fontWeight: 600, marginBottom: 10 }}>
@@ -5552,15 +5565,21 @@ function CadastroProfessoresPrincipal({ data, save, prof }) {
         {data.professores.map((p) => (
           <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, opacity: p.ativo === false ? 0.6 : 1, minWidth: 0 }}>
-              <Avatar foto={p.foto} nome={p.nome} size={30} />
-              <div style={{ fontSize: 13, color: texto, overflowWrap: "anywhere" }}>
-                {p.nome} <span style={{ color: muted }}>{p.email ? `· ${p.email}` : ""}{p.ativo === false ? " · acesso desativado" : ""}</span>
+              <Avatar foto={p.foto} nome={p.nome} size={36} />
+              <div style={{ minWidth: 0, overflowWrap: "anywhere" }}>
+                <div style={{ fontWeight: 600, fontSize: 13.5, color: texto }}>{p.nome}</div>
+                <div style={{ fontSize: 12, color: muted }}>{p.especialidade || "—"} {p.email && `· ${p.email}`} {p.telefone && `· ${p.telefone}`}</div>
+                {p.faixaId && <div style={{ marginTop: 4 }}><BeltBar faixas={data.faixas} faixaId={p.faixaId} grau={p.grau || 0} textColor={texto} /></div>}
               </div>
             </div>
             {p.id === prof.id ? (
               <span style={{ fontSize: 12, color: muted }}>você (edite pelo seu perfil)</span>
             ) : (
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                {p.ativo === false && <Tag ok={false}>Acesso desativado</Tag>}
+                {(data.academia.termoPadrao || data.academia.termoPdf) && <Tag ok={p.termoAceito}>{p.termoAceito ? "Termo OK" : "Termo pendente"}</Tag>}
+                {senhaGerada?.id === p.id && <span style={{ fontSize: 11.5, fontWeight: 700, color: "#6FCF7A" }}>Nova senha: {senhaGerada.senha}</span>}
+                <Button variant="ghost" style={ghost} onClick={() => resetarSenha(p.id)}>Redefinir senha</Button>
                 <Button variant="ghost" style={ghost} onClick={() => { setNovo(false); setEditando(p); }}>Editar</Button>
                 <Button variant={p.ativo === false ? "gold" : "ghost"} style={p.ativo === false ? undefined : ghost} onClick={() => alternarAtivo(p.id)}>{p.ativo === false ? "Reativar acesso" : "Desativar acesso"}</Button>
                 <ConfirmDelete onConfirm={() => excluir(p.id)} />
