@@ -5427,6 +5427,77 @@ function PdfsProfessorPrincipal({ prof, admin, nomeEquipe }) {
   );
 }
 
+// Cadastro de professores pelo professor principal (Felipe Rodrigues, dono da linha em
+// `historia_academia`). Só CRIA professores novos — editar, desativar e excluir continuam só com o
+// admin. A RLS de INSERT em "professores" deixa o principal gravar (2026-11-07_principal_cadastra
+// _professores.sql). Sem a tabela no banco (ex: Cia Paulista) o card não aparece pra ninguém.
+function CadastroProfessoresPrincipal({ data, save, prof }) {
+  const light = useDesktopLight();
+  const [ehPrincipal, setEhPrincipal] = useState(false);
+  const [novo, setNovo] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+  const [criado, setCriado] = useState(null);
+  useEffect(() => {
+    let ativo = true;
+    pg.select("historia_academia", "select=professor_id&id=eq.1")
+      .then((rows) => { if (ativo && prof?.id && rows?.[0]?.professor_id === prof.id) setEhPrincipal(true); })
+      .catch(() => {});
+    return () => { ativo = false; };
+  }, [prof?.id]);
+  if (!ehPrincipal) return null;
+  const muted = light ? LIGHT.muted : "#9B9891";
+  const texto = light ? LIGHT.text : "#F5F3EC";
+  const adicionar = async (form) => {
+    if (!form.email?.trim()) { alert("Informe o e-mail do professor — ele é o login de acesso ao app."); return; }
+    if (data.professores.some((p) => (p.email || "").trim().toLowerCase() === form.email.trim().toLowerCase())) {
+      alert("Já existe um professor cadastrado com esse e-mail.");
+      return;
+    }
+    setSalvando(true);
+    try {
+      const authPatch = await sincronizarContaAuth(null, form);
+      const p = { id: uid(), tipo: "professor", primeiroAcesso: true, termoAceito: false, termoAceitoEm: null, ativo: true, ...form, ...authPatch };
+      await save({ ...data, professores: [...data.professores, p] });
+      setCriado({ nome: p.nome, email: p.email, senha: p.senha });
+      setNovo(false);
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setSalvando(false);
+    }
+  };
+  return (
+    <Card dark style={light ? { marginTop: 16 } : { marginTop: 16, marginBottom: 16, background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}>
+      <div style={light ? blockTitleStyle : { ...blockTitleStyle, color: "#FFFFFF" }}>👥 Cadastrar professores</div>
+      <p style={{ fontSize: 12.5, color: muted, marginBottom: 12 }}>
+        Como professor principal, você pode cadastrar novos professores. Eles entram no app do professor com o e-mail e a senha definidos aqui. Editar, desativar ou excluir um professor continua com a administração.
+      </p>
+      {criado && (
+        <p style={{ fontSize: 12.5, color: "#6FCF7F", fontWeight: 600, marginBottom: 10 }}>
+          {criado.nome} cadastrado! Login: {criado.email} · Senha: {criado.senha}
+        </p>
+      )}
+      {novo ? (
+        salvando ? <p style={{ fontSize: 12.5, color: muted }}>Cadastrando...</p> : (
+          <PersonForm tipo="professor" faixas={data.faixas} unidades={data.unidades} onCancel={() => setNovo(false)} onSave={adicionar} />
+        )
+      ) : (
+        <Button variant="gold" icon={Plus} onClick={() => { setCriado(null); setNovo(true); }}>Novo professor</Button>
+      )}
+      <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 6 }}>
+        {data.professores.map((p) => (
+          <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, opacity: p.ativo === false ? 0.6 : 1 }}>
+            <Avatar foto={p.foto} nome={p.nome} size={30} />
+            <div style={{ fontSize: 13, color: texto }}>
+              {p.nome} <span style={{ color: muted }}>{p.email ? `· ${p.email}` : ""}{p.ativo === false ? " · acesso desativado" : ""}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 function GolpesProibidosCard({ pdf, pdfNome }) {
   const light = useDesktopLight();
   if (!pdf) return null;
@@ -6455,6 +6526,7 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
       )}
 
       {tab === "perfil" && <PdfsProfessorPrincipal prof={prof} nomeEquipe={data.academia.nome} />}
+      {tab === "perfil" && <CadastroProfessoresPrincipal data={data} save={save} prof={prof} />}
       </div>
       </div>
     </div>
@@ -6833,6 +6905,8 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
           </Card>
 
           <PdfsProfessorPrincipal prof={prof} nomeEquipe={data.academia.nome} />
+
+          <CadastroProfessoresPrincipal data={data} save={save} prof={prof} />
 
           <RecadoMestreProfessor data={data} prof={prof} dark={true} />
 
