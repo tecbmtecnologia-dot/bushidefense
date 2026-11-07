@@ -5428,15 +5428,18 @@ function PdfsProfessorPrincipal({ prof, admin, nomeEquipe }) {
 }
 
 // Cadastro de professores pelo professor principal (Felipe Rodrigues, dono da linha em
-// `historia_academia`). Só CRIA professores novos — editar, desativar e excluir continuam só com o
-// admin. A RLS de INSERT em "professores" deixa o principal gravar (2026-11-07_principal_cadastra
-// _professores.sql). Sem a tabela no banco (ex: Cia Paulista) o card não aparece pra ninguém.
+// `historia_academia`): cria, edita e desativa/reativa professores — excluir continua só com o
+// admin, e a própria linha ele edita pelo perfil (não pode se desativar). A RLS de INSERT/UPDATE em
+// "professores" deixa o principal gravar (2026-11-07_principal_cadastra_professores.sql e
+// 2026-11-07_principal_edita_professores.sql). Sem a tabela no banco (ex: Cia Paulista) o card não
+// aparece pra ninguém.
 function CadastroProfessoresPrincipal({ data, save, prof }) {
   const light = useDesktopLight();
   const [ehPrincipal, setEhPrincipal] = useState(false);
   const [novo, setNovo] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [criado, setCriado] = useState(null);
+  const [editando, setEditando] = useState(null);
   useEffect(() => {
     let ativo = true;
     pg.select("historia_academia", "select=professor_id&id=eq.1")
@@ -5453,6 +5456,7 @@ function CadastroProfessoresPrincipal({ data, save, prof }) {
       alert("Já existe um professor cadastrado com esse e-mail.");
       return;
     }
+    setEditando(null);
     setSalvando(true);
     try {
       const authPatch = await sincronizarContaAuth(null, form);
@@ -5466,31 +5470,74 @@ function CadastroProfessoresPrincipal({ data, save, prof }) {
       setSalvando(false);
     }
   };
+  const editar = async (id, form) => {
+    const anterior = data.professores.find((p) => p.id === id);
+    if (form.email?.trim() && data.professores.some((p) => p.id !== id && (p.email || "").trim().toLowerCase() === form.email.trim().toLowerCase())) {
+      alert("Já existe outro professor cadastrado com esse e-mail.");
+      return;
+    }
+    setSalvando(true);
+    try {
+      let authPatch = null;
+      try {
+        authPatch = await sincronizarContaAuth(anterior, form);
+      } catch (e) {
+        alert(e.message);
+      }
+      await save({ ...data, professores: data.professores.map((p) => (p.id === id ? { ...p, ...form, ...authPatch } : p)) });
+      setEditando(null);
+    } catch (e) {
+      alert(`Não foi possível salvar: ${e.message}`);
+    } finally {
+      setSalvando(false);
+    }
+  };
+  const alternarAtivo = async (id) => {
+    try {
+      await save({ ...data, professores: data.professores.map((p) => (p.id === id ? { ...p, ativo: p.ativo === false } : p)) });
+    } catch (e) {
+      alert(`Não foi possível salvar: ${e.message}`);
+    }
+  };
+  const ghost = ghostEscuroFallback(light);
   return (
     <Card dark style={light ? { marginTop: 16 } : { marginTop: 16, marginBottom: 16, background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}>
-      <div style={light ? blockTitleStyle : { ...blockTitleStyle, color: "#FFFFFF" }}>👥 Cadastrar professores</div>
+      <div style={light ? blockTitleStyle : { ...blockTitleStyle, color: "#FFFFFF" }}>👥 Professores</div>
       <p style={{ fontSize: 12.5, color: muted, marginBottom: 12 }}>
-        Como professor principal, você pode cadastrar novos professores. Eles entram no app do professor com o e-mail e a senha definidos aqui. Editar, desativar ou excluir um professor continua com a administração.
+        Como professor principal, você pode cadastrar, editar e desativar professores. Eles entram no app do professor com o e-mail e a senha definidos aqui. Professor desativado não consegue mais entrar até ser reativado. Excluir um professor continua com a administração.
       </p>
       {criado && (
         <p style={{ fontSize: 12.5, color: "#6FCF7F", fontWeight: 600, marginBottom: 10 }}>
           {criado.nome} cadastrado! Login: {criado.email} · Senha: {criado.senha}
         </p>
       )}
+      {editando && (salvando ? <p style={{ fontSize: 12.5, color: muted }}>Salvando...</p> : (
+        <PersonForm key={editando.id} tipo="professor" faixas={data.faixas} unidades={data.unidades} initial={editando} onCancel={() => setEditando(null)} onSave={(form) => editar(editando.id, form)} />
+      ))}
       {novo ? (
         salvando ? <p style={{ fontSize: 12.5, color: muted }}>Cadastrando...</p> : (
           <PersonForm tipo="professor" faixas={data.faixas} unidades={data.unidades} onCancel={() => setNovo(false)} onSave={adicionar} />
         )
       ) : (
-        <Button variant="gold" icon={Plus} onClick={() => { setCriado(null); setNovo(true); }}>Novo professor</Button>
+        <Button variant="gold" icon={Plus} onClick={() => { setCriado(null); setEditando(null); setNovo(true); }}>Novo professor</Button>
       )}
-      <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
         {data.professores.map((p) => (
-          <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, opacity: p.ativo === false ? 0.6 : 1 }}>
-            <Avatar foto={p.foto} nome={p.nome} size={30} />
-            <div style={{ fontSize: 13, color: texto }}>
-              {p.nome} <span style={{ color: muted }}>{p.email ? `· ${p.email}` : ""}{p.ativo === false ? " · acesso desativado" : ""}</span>
+          <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, opacity: p.ativo === false ? 0.6 : 1, minWidth: 0 }}>
+              <Avatar foto={p.foto} nome={p.nome} size={30} />
+              <div style={{ fontSize: 13, color: texto, overflowWrap: "anywhere" }}>
+                {p.nome} <span style={{ color: muted }}>{p.email ? `· ${p.email}` : ""}{p.ativo === false ? " · acesso desativado" : ""}</span>
+              </div>
             </div>
+            {p.id === prof.id ? (
+              <span style={{ fontSize: 12, color: muted }}>você (edite pelo seu perfil)</span>
+            ) : (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <Button variant="ghost" style={ghost} onClick={() => { setNovo(false); setEditando(p); }}>Editar</Button>
+                <Button variant={p.ativo === false ? "gold" : "ghost"} style={p.ativo === false ? undefined : ghost} onClick={() => alternarAtivo(p.id)}>{p.ativo === false ? "Reativar acesso" : "Desativar acesso"}</Button>
+              </div>
+            )}
           </div>
         ))}
       </div>
