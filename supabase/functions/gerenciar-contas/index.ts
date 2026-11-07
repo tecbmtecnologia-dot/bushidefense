@@ -13,6 +13,18 @@
 // chamarGerenciarContas) já manda o token da sessão atual, não mais a chave
 // pública.
 //
+// SEGURANÇA (corrigido 2026-11-07): ainda assim, qualquer professor logado podia
+// redefinir senha / trocar e-mail / excluir a conta de QUALQUER authUserId
+// (inclusive a do admin) chamando a function direto. Agora, pra quem não é
+// admin, as ações sobre uma conta existente passam por podeMexerNaConta():
+//   - conta do admin: nunca;
+//   - conta de professor: só a própria, ou o professor principal (Bushi:
+//     dono da linha em historia_academia) mexendo em outro professor;
+//   - conta de aluno: só se TODAS as linhas de aluno com esse login forem do
+//     professor que chama;
+//   - conta sem cadastro (a linha já foi apagada antes): só "excluir".
+// "criar" continua liberado pra professor (só cria login novo).
+//
 // Deploy: npx supabase functions deploy gerenciar-contas
 
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
@@ -53,11 +65,44 @@ Deno.serve(async (req) => {
     ]);
     const ehAdmin = (academiaRows || []).length > 0;
     const ehProfessor = (profRows || []).length > 0;
+    const chamadorProfId = profRows?.[0]?.id ?? null;
     if (!ehAdmin && !ehProfessor) {
       return new Response(JSON.stringify({ error: "sem permissão pra gerenciar contas" }), {
         status: 403,
         headers: { ...cors, "Content-Type": "application/json" },
       });
+    }
+
+    const negar = () =>
+      new Response(JSON.stringify({ error: "sem permissão pra mexer nesta conta" }), {
+        status: 403,
+        headers: { ...cors, "Content-Type": "application/json" },
+      });
+
+    // Quem não é admin só mexe em contas que estão sob a responsabilidade dele (ver topo).
+    const podeMexerNaConta = async (alvo: string): Promise<boolean> => {
+      if (ehAdmin) return true;
+      if (!alvo) return false;
+      const [{ data: alvoAdmin }, { data: alvoProf }, { data: alvoAlunos }] = await Promise.all([
+        supabase.from("academia").select("id").eq("admin_auth_user_id", alvo).limit(1),
+        supabase.from("professores").select("id").eq("auth_user_id", alvo),
+        supabase.from("alunos").select("professor_id").eq("auth_user_id", alvo),
+      ]);
+      if ((alvoAdmin || []).length) return false;
+      if ((alvoProf || []).length) {
+        if (alvo === chamadorId) return true;
+        // historia_academia só existe na Bushi; sem a tabela, ninguém é principal.
+        const { data: principal, error: erroPrincipal } = await supabase
+          .from("historia_academia").select("professor_id").eq("id", 1).limit(1);
+        return !erroPrincipal && !!chamadorProfId && String(principal?.[0]?.professor_id) === String(chamadorProfId);
+      }
+      if ((alvoAlunos || []).length) {
+        return !!chamadorProfId && alvoAlunos!.every((a) => String(a.professor_id) === String(chamadorProfId));
+      }
+      return acao === "excluir";
+    };
+    if (acao === "excluir" || acao === "redefinir_senha" || acao === "atualizar_email") {
+      if (authUserId && !(await podeMexerNaConta(String(authUserId)))) return negar();
     }
 
     if (acao === "excluir") {
