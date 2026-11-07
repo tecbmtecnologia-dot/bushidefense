@@ -5428,11 +5428,11 @@ function PdfsProfessorPrincipal({ prof, admin, nomeEquipe }) {
 }
 
 // Cadastro de professores pelo professor principal (Felipe Rodrigues, dono da linha em
-// `historia_academia`): cria, edita e desativa/reativa professores — excluir continua só com o
-// admin, e a própria linha ele edita pelo perfil (não pode se desativar). A RLS de INSERT/UPDATE em
-// "professores" deixa o principal gravar (2026-11-07_principal_cadastra_professores.sql e
-// 2026-11-07_principal_edita_professores.sql). Sem a tabela no banco (ex: Cia Paulista) o card não
-// aparece pra ninguém.
+// `historia_academia`): cria, edita, desativa/reativa e exclui professores. A própria linha ele
+// edita pelo perfil (não pode se desativar nem se excluir — excluir apagaria em cascata a linha de
+// historia_academia). A RLS em "professores" deixa o principal gravar
+// (2026-11-07_principal_cadastra_professores.sql, _edita_professores.sql e
+// _exclui_professores.sql). Sem a tabela no banco (ex: Cia Paulista) o card não aparece pra ninguém.
 function CadastroProfessoresPrincipal({ data, save, prof }) {
   const light = useDesktopLight();
   const [ehPrincipal, setEhPrincipal] = useState(false);
@@ -5499,12 +5499,33 @@ function CadastroProfessoresPrincipal({ data, save, prof }) {
       alert(`Não foi possível salvar: ${e.message}`);
     }
   };
+  // alunos.professor_id e sessoes_checkin.professor_id não têm "on delete" no banco: com aluno
+  // vinculado ou aula registrada, o banco recusa a exclusão — avisa antes, sugerindo desativar.
+  const excluir = async (id) => {
+    const alvo = data.professores.find((p) => p.id === id);
+    if (!alvo || id === prof.id) return;
+    const alunosDele = data.alunos.filter((a) => a.professorId === id).length;
+    const aulasDele = (data.sessoes || []).filter((x) => x.professorId === id).length;
+    if (alunosDele || aulasDele) {
+      alert(`Não dá pra excluir ${alvo.nome}: ${[alunosDele && `${alunosDele} aluno(s) vinculado(s) a ele`, aulasDele && `${aulasDele} aula(s) registrada(s) por ele`].filter(Boolean).join(" e ")}. Use "Desativar acesso" — ele deixa de entrar no app e o histórico fica guardado.`);
+      return;
+    }
+    try {
+      await save({ ...data, professores: data.professores.filter((p) => p.id !== id) });
+    } catch (e) {
+      alert(`Não foi possível excluir: ${e.message}. Se ele tem histórico no app, use "Desativar acesso".`);
+      return;
+    }
+    if (editando?.id === id) setEditando(null);
+    // Apaga também o login, pra o e-mail ficar livre caso ele seja cadastrado de novo.
+    if (alvo.authUserId) { try { await excluirContaAuth(alvo.authUserId); } catch (_) {} }
+  };
   const ghost = ghostEscuroFallback(light);
   return (
     <Card dark style={light ? { marginTop: 16 } : { marginTop: 16, marginBottom: 16, background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}>
       <div style={light ? blockTitleStyle : { ...blockTitleStyle, color: "#FFFFFF" }}>👥 Professores</div>
       <p style={{ fontSize: 12.5, color: muted, marginBottom: 12 }}>
-        Como professor principal, você pode cadastrar, editar e desativar professores. Eles entram no app do professor com o e-mail e a senha definidos aqui. Professor desativado não consegue mais entrar até ser reativado. Excluir um professor continua com a administração.
+        Como professor principal, você pode cadastrar, editar, desativar e excluir professores. Eles entram no app do professor com o e-mail e a senha definidos aqui. Professor desativado não consegue mais entrar até ser reativado. Excluir apaga o cadastro e o login de vez — só funciona pra quem não tem alunos vinculados nem aulas registradas.
       </p>
       {criado && (
         <p style={{ fontSize: 12.5, color: "#6FCF7F", fontWeight: 600, marginBottom: 10 }}>
@@ -5536,6 +5557,7 @@ function CadastroProfessoresPrincipal({ data, save, prof }) {
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 <Button variant="ghost" style={ghost} onClick={() => { setNovo(false); setEditando(p); }}>Editar</Button>
                 <Button variant={p.ativo === false ? "gold" : "ghost"} style={p.ativo === false ? undefined : ghost} onClick={() => alternarAtivo(p.id)}>{p.ativo === false ? "Reativar acesso" : "Desativar acesso"}</Button>
+                <ConfirmDelete onConfirm={() => excluir(p.id)} />
               </div>
             )}
           </div>
