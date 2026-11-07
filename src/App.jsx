@@ -5517,6 +5517,12 @@ function CadastroProfessoresPrincipal({ data, save, prof }) {
       return;
     }
     if (editando?.id === id) setEditando(null);
+    // DELETE barrado pela RLS não dá erro (só não apaga nada) — confere no banco antes de apagar o
+    // login, senão o professor ficaria com cadastro e sem conta.
+    try {
+      const ainda = await pg.select("professores", `select=id&id=eq.${id}`);
+      if (ainda?.length) { alert(`Não foi possível excluir ${alvo.nome}. Tente de novo ou peça pra administração.`); return; }
+    } catch (_) { return; }
     // Apaga também o login, pra o e-mail ficar livre caso ele seja cadastrado de novo.
     if (alvo.authUserId) { try { await excluirContaAuth(alvo.authUserId); } catch (_) {} }
   };
