@@ -21,7 +21,8 @@
 //   - conta de professor: só a própria, ou o professor principal (Bushi:
 //     dono da linha em historia_academia) mexendo em outro professor;
 //   - conta de aluno: só se TODAS as linhas de aluno com esse login forem do
-//     professor que chama;
+//     professor que chama — ou de qualquer professor, se a academia tiver a função
+//     professores_veem_todos_alunos() (só a Bushi, desde 2026-11-24);
 //   - conta sem cadastro (a linha já foi apagada antes): só "excluir".
 // "criar" continua liberado pra professor (só cria login novo).
 //
@@ -97,7 +98,11 @@ Deno.serve(async (req) => {
         return !erroPrincipal && !!chamadorProfId && String(principal?.[0]?.professor_id) === String(chamadorProfId);
       }
       if ((alvoAlunos || []).length) {
-        return !!chamadorProfId && alvoAlunos!.every((a) => String(a.professor_id) === String(chamadorProfId));
+        if (!chamadorProfId) return false;
+        if (alvoAlunos!.every((a) => String(a.professor_id) === String(chamadorProfId))) return true;
+        // Sem a função no banco (Cia Paulista), o rpc devolve erro: só os próprios alunos.
+        const { data: veTodos, error: erroVeTodos } = await supabase.rpc("professores_veem_todos_alunos");
+        return !erroVeTodos && veTodos === true;
       }
       return acao === "excluir";
     };

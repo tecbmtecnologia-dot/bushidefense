@@ -9,6 +9,43 @@ import { MARCA, GRADE_HORARIOS } from "virtual:marca";
 // Chave pública Web Push da academia (par da VAPID_PRIVATE_KEY nos secrets do Supabase).
 const VAPID_PUBLIC_KEY = MARCA.vapidPublicKey;
 
+/* Marca com "professoresVeemTodosAlunos" (só a Bushi Defense): todo professor vê e altera todos os
+   alunos da academia. Nas outras, cada professor só vê os vinculados a ele. Quem libera de verdade
+   é a RLS (2026-11-24_professores_veem_todos_alunos.sql) — aqui é só o recorte da tela.
+   O mesmo vale pro que o professor publica (recados, fotos, avisos, vídeos e produtos): vai pra
+   todos os alunos da academia, e os outros professores também veem. Só quem publicou (ou o admin)
+   exclui. */
+const VE_TODOS_ALUNOS = !!MARCA.professoresVeemTodosAlunos;
+const alunosDoProf = (data, prof) => data.alunos.filter((a) => VE_TODOS_ALUNOS || a.professorId === prof.id);
+// Planos que o professor pode escolher no cadastro do aluno.
+const planosDoProf = (data, prof) => data.planos.filter((p) => VE_TODOS_ALUNOS || !p.professorId || p.professorId === prof.id);
+// Unidade no formulário de EDIÇÃO: vendo todos, o professor escolhe a unidade — se ficasse fixa na
+// dele, salvar o aluno de outro professor trocaria (ou apagaria) a unidade do aluno.
+const unidadeEdicaoProf = (data, prof) => (VE_TODOS_ALUNOS
+  ? { unidades: data.unidades }
+  : { unidadeFixa: (data.unidades || []).find((u) => u.id === prof.unidadeId) || null });
+const tituloRelatorioProf = (prof) => (VE_TODOS_ALUNOS ? "Todos os alunos" : prof.nome);
+const TXT_DOS_ALUNOS = VE_TODOS_ALUNOS ? "dos alunos" : "dos seus alunos";
+const TXT_ENTRE_ALUNOS = VE_TODOS_ALUNOS ? "entre os alunos" : "entre os seus alunos";
+const TXT_ALUNOS = VE_TODOS_ALUNOS ? "Alunos" : "Seus alunos";
+const TXT_TITULO_ALUNOS = VE_TODOS_ALUNOS ? "Alunos" : "Meus alunos";
+const TXT_NENHUM_ALUNO = VE_TODOS_ALUNOS ? "Nenhum aluno cadastrado ainda." : "Nenhum aluno vinculado a você ainda.";
+const TXT_NENHUM_ALUNO_VINCULAR = VE_TODOS_ALUNOS ? TXT_NENHUM_ALUNO : "Nenhum aluno vinculado a você ainda. Peça para a administração te vincular no cadastro do aluno.";
+// Conteúdo (aviso, vídeo, produto) que este professor vê na lista: o geral, o dele e, com a opção
+// ligada, o dos outros professores. No app do aluno é a mesma conta com o professor do aluno.
+const conteudoVisivel = (item, professorId) => VE_TODOS_ALUNOS || !item.professorId || item.professorId === professorId;
+// Quem recebe a notificação do que o professor publica. A função send-push usa todosAlunos quando
+// vem; a versão antiga dela ignora esse campo e manda só pros vinculados.
+const destinoPushProf = (prof) => ({ professorAlunosId: prof.id, ...(VE_TODOS_ALUNOS ? { todosAlunos: true } : {}) });
+const TXT_PROS_ALUNOS = VE_TODOS_ALUNOS ? "pra todos os alunos da academia" : "só pros seus alunos vinculados";
+const nomeProf = (data, id) => data.professores.find((p) => p.id === id)?.nome;
+const rotuloPublicacao = (data, item, prof) => {
+  if (!item.professorId) return "Geral (todos)";
+  if (!VE_TODOS_ALUNOS) return "Só seus alunos";
+  return item.professorId === prof.id ? "Publicado por você" : `Prof. ${nomeProf(data, item.professorId) || "?"}`;
+};
+const txtTotalAlunos = (n) => (VE_TODOS_ALUNOS ? `${n} aluno(s) da academia` : `${n} aluno(s) vinculados a você`);
+
 function urlBase64ToUint8Array(base64String) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
@@ -1714,7 +1751,7 @@ function RelatoriosProfessor({ data, prof, meusAlunos }) {
 
   return (
     <div>
-      <div style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#9B9891", marginBottom: 12 }}>Todos os relatórios abaixo consideram só os seus {meusAlunos.length} aluno(s) vinculado(s).</div>
+      <div style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#9B9891", marginBottom: 12 }}>{VE_TODOS_ALUNOS ? `Todos os relatórios abaixo consideram os ${meusAlunos.length} aluno(s) da academia.` : `Todos os relatórios abaixo consideram só os seus ${meusAlunos.length} aluno(s) vinculado(s).`}</div>
       <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
         <input style={{ ...inputStyle, flex: 1, minWidth: 200 }} placeholder="🔍 Buscar relatório..." value={busca} onChange={(e) => setBusca(e.target.value)} />
         {categorias.map((c) => (
@@ -1735,14 +1772,14 @@ function RelatoriosProfessor({ data, prof, meusAlunos }) {
 
         {visivel("alunos", "Lista de alunos") && (
           <CartaoRelatorio dark corIcone="#EAF2FF" icone="📋" tag="Alunos" titulo="Lista de alunos"
-            descricao="Cadastro completo dos seus alunos: faixa, contato, plano e status de pagamento." botao={{ variant: "gold" }}
-            onClick={() => { setErro(""); gerarRelatorioListaAlunos(data, setErro, meusAlunos, prof.nome); }} />
+            descricao={`Cadastro completo ${TXT_DOS_ALUNOS}: faixa, contato, plano e status de pagamento.`} botao={{ variant: "gold" }}
+            onClick={() => { setErro(""); gerarRelatorioListaAlunos(data, setErro, meusAlunos, tituloRelatorioProf(prof)); }} />
         )}
 
         {visivel("alunos", "Frequência de alunos") && (
           <CartaoRelatorio dark corIcone="#FFF3E0" icone="🏆" tag="Alunos" titulo="Frequência de alunos"
-            descricao="Ranking de quem mais e menos treina entre os seus alunos." botao={{ variant: "gold" }}
-            onClick={() => { setErro(""); gerarRelatorioFrequencia(data, setErro, ordemFrequencia, meusAlunos, prof.nome); }}>
+            descricao={`Ranking de quem mais e menos treina ${TXT_ENTRE_ALUNOS}.`} botao={{ variant: "gold" }}
+            onClick={() => { setErro(""); gerarRelatorioFrequencia(data, setErro, ordemFrequencia, meusAlunos, tituloRelatorioProf(prof)); }}>
             <select style={inputStyle} value={ordemFrequencia} onChange={(e) => setOrdemFrequencia(e.target.value)}>
               <option value="mais">Ordenar: mais frequentes</option>
               <option value="menos">Ordenar: menos frequentes</option>
@@ -1752,52 +1789,52 @@ function RelatoriosProfessor({ data, prof, meusAlunos }) {
 
         {visivel("alunos", "Alunos desativados") && (
           <CartaoRelatorio dark corIcone="#FFEAEA" icone="🚫" tag="Alunos" titulo="Alunos desativados"
-            descricao="Seus alunos com acesso ao app bloqueado no momento." botao={{ variant: "gold" }}
-            onClick={() => { setErro(""); gerarRelatorioDesativados(data, setErro, meusAlunos, prof.nome); }} />
+            descricao={`${TXT_ALUNOS} com acesso ao app bloqueado no momento.`} botao={{ variant: "gold" }}
+            onClick={() => { setErro(""); gerarRelatorioDesativados(data, setErro, meusAlunos, tituloRelatorioProf(prof)); }} />
         )}
 
         {visivel("checkins", "Check-ins por data") && (
           <CartaoRelatorio dark corIcone="#EAF7EE" icone="📍" tag="Check-ins" titulo="Check-ins por data"
-            descricao="Quais dos seus alunos fizeram check-in em um dia específico." botao={{ variant: "gold" }}
-            onClick={() => { setErro(""); gerarRelatorioCheckins(data, dataCheckins, setErro, meusAlunos, prof.nome); }}>
+            descricao={`Quais ${TXT_DOS_ALUNOS} fizeram check-in em um dia específico.`} botao={{ variant: "gold" }}
+            onClick={() => { setErro(""); gerarRelatorioCheckins(data, dataCheckins, setErro, meusAlunos, tituloRelatorioProf(prof)); }}>
             <input type="date" style={{ ...inputStyle, maxWidth: "100%" }} value={dataCheckins} onChange={(e) => setDataCheckins(e.target.value)} />
           </CartaoRelatorio>
         )}
 
         {visivel("financeiro", "Relatório mensal") && (
           <CartaoRelatorio dark corIcone="#F1EAFF" icone="💰" tag="Financeiro" titulo="Relatório mensal"
-            descricao="Pagamentos confirmados e pendências dos seus alunos no mês." botao={{ variant: "gold" }}
-            onClick={() => { setErro(""); gerarRelatorioMensal(data, mesFinanceiro, setErro, meusAlunos, prof.nome); }}>
+            descricao={`Pagamentos confirmados e pendências ${TXT_DOS_ALUNOS} no mês.`} botao={{ variant: "gold" }}
+            onClick={() => { setErro(""); gerarRelatorioMensal(data, mesFinanceiro, setErro, meusAlunos, tituloRelatorioProf(prof)); }}>
             <input type="month" style={{ ...inputStyle, maxWidth: "100%" }} value={mesFinanceiro} onChange={(e) => setMesFinanceiro(e.target.value)} />
           </CartaoRelatorio>
         )}
 
         {visivel("financeiro", "Relatório anual") && (
           <CartaoRelatorio dark corIcone="#F1EAFF" icone="📅" tag="Financeiro" titulo="Relatório anual"
-            descricao="Receita do ano dos seus alunos, mês a mês e por aluno." botao={{ variant: "gold" }}
-            onClick={() => { setErro(""); gerarRelatorioAnual(data, anoFinanceiro, setErro, meusAlunos, prof.nome); }}>
+            descricao={`Receita do ano ${TXT_DOS_ALUNOS}, mês a mês e por aluno.`} botao={{ variant: "gold" }}
+            onClick={() => { setErro(""); gerarRelatorioAnual(data, anoFinanceiro, setErro, meusAlunos, tituloRelatorioProf(prof)); }}>
             <input type="number" min="2000" max="2100" style={{ ...inputStyle, maxWidth: "100%" }} value={anoFinanceiro} onChange={(e) => setAnoFinanceiro(e.target.value)} placeholder="2026" />
           </CartaoRelatorio>
         )}
 
         {visivel("financeiro", "Pagamentos: confirmados x pendentes") && (
           <CartaoRelatorio dark corIcone="#F1EAFF" icone="📈" tag="Financeiro" titulo="Pagamentos: confirmados x pendentes"
-            descricao="Gráfico comparando os dois grupos, só dos seus alunos." botao={{ variant: "gold", texto: "Ver gráfico" }}
+            descricao={`Gráfico comparando os dois grupos${VE_TODOS_ALUNOS ? "" : ", só dos seus alunos"}.`} botao={{ variant: "gold", texto: "Ver gráfico" }}
             onClick={() => setSecaoExpandida(secaoExpandida === "pagamentos" ? null : "pagamentos")} />
         )}
 
         {visivel("financeiro", "Pagamentos confirmados") && (
           <CartaoRelatorio dark corIcone="#EAF7EE" icone="✅" tag="Financeiro" titulo="Pagamentos confirmados"
-            descricao="Lista dos pagamentos que os seus alunos fizeram no mês, com data e valor." botao={{ variant: "gold" }}
-            onClick={() => { setErro(""); gerarRelatorioPagamentosConfirmados(data, mesConfirmados, setErro, meusAlunos, prof.nome); }}>
+            descricao={`Lista dos pagamentos que os ${VE_TODOS_ALUNOS ? "" : "seus "}alunos fizeram no mês, com data e valor.`} botao={{ variant: "gold" }}
+            onClick={() => { setErro(""); gerarRelatorioPagamentosConfirmados(data, mesConfirmados, setErro, meusAlunos, tituloRelatorioProf(prof)); }}>
             <input type="month" style={{ ...inputStyle, maxWidth: "100%" }} value={mesConfirmados} onChange={(e) => setMesConfirmados(e.target.value)} />
           </CartaoRelatorio>
         )}
 
         {visivel("financeiro", "Pagamentos pendentes") && (
           <CartaoRelatorio dark corIcone="#FFEAEA" icone="⏳" tag="Financeiro" titulo="Pagamentos pendentes"
-            descricao="Seus alunos sem pagamento cobrindo o mês, com telefone e valor em aberto." botao={{ variant: "gold" }}
-            onClick={() => { setErro(""); gerarRelatorioPagamentosPendentes(data, mesPendentes, setErro, meusAlunos, prof.nome); }}>
+            descricao={`${TXT_ALUNOS} sem pagamento cobrindo o mês, com telefone e valor em aberto.`} botao={{ variant: "gold" }}
+            onClick={() => { setErro(""); gerarRelatorioPagamentosPendentes(data, mesPendentes, setErro, meusAlunos, tituloRelatorioProf(prof)); }}>
             <input type="month" style={{ ...inputStyle, maxWidth: "100%" }} value={mesPendentes} onChange={(e) => setMesPendentes(e.target.value)} />
           </CartaoRelatorio>
         )}
@@ -1810,19 +1847,19 @@ function RelatoriosProfessor({ data, prof, meusAlunos }) {
 
         {visivel("graduacao", "Alunos por faixa") && (
           <CartaoRelatorio dark corIcone="#FFF9E0" icone="🎖️" tag="Graduação" titulo="Alunos por faixa"
-            descricao="Distribuição dos seus alunos por faixa atual." botao={{ variant: "gold", texto: "Ver gráfico" }}
+            descricao={`Distribuição ${TXT_DOS_ALUNOS} por faixa atual.`} botao={{ variant: "gold", texto: "Ver gráfico" }}
             onClick={() => setSecaoExpandida(secaoExpandida === "faixas" ? null : "faixas")} />
         )}
 
         {visivel("graduacao", "Perto de graduar") && (
           <CartaoRelatorio dark corIcone="#FFF9E0" icone="⭐" tag="Graduação" titulo="Perto de graduar"
-            descricao="Seus alunos a poucas aulas do próximo grau ou faixa." botao={{ variant: "gold", texto: "Ver lista" }}
+            descricao={`${TXT_ALUNOS} a poucas aulas do próximo grau ou faixa.`} botao={{ variant: "gold", texto: "Ver lista" }}
             onClick={() => setSecaoExpandida(secaoExpandida === "perto" ? null : "perto")} />
         )}
 
         {visivel("alunos", "Aniversariantes") && (
           <CartaoRelatorio dark corIcone="#FFEAF3" icone="🎂" tag="Alunos" titulo="Aniversariantes"
-            descricao="Filtra por mês quem está de aniversário entre os seus alunos." botao={{ variant: "gold", texto: "Ver lista" }}
+            descricao={`Filtra por mês quem está de aniversário ${TXT_ENTRE_ALUNOS}.`} botao={{ variant: "gold", texto: "Ver lista" }}
             onClick={() => setSecaoExpandida(secaoExpandida === "aniversario" ? null : "aniversario")}>
             <select style={inputStyle} value={mesAniversario} onChange={(e) => setMesAniversario(Number(e.target.value))}>
               {MESES.map((m, i) => <option key={i} value={i}>{m}</option>)}
@@ -1834,7 +1871,7 @@ function RelatoriosProfessor({ data, prof, meusAlunos }) {
 
       <div ref={secaoRef}>
         {secaoExpandida === "pagamentos" && <div style={{ marginTop: 18 }}><PagamentosChart data={data} alunosFiltro={meusAlunos} dark /></div>}
-        {secaoExpandida === "faixas" && <div style={{ marginTop: 18 }}><AlunosPorFaixaChart alunos={meusAlunos} faixas={data.faixas} titulo="Meus alunos por faixa" dark /></div>}
+        {secaoExpandida === "faixas" && <div style={{ marginTop: 18 }}><AlunosPorFaixaChart alunos={meusAlunos} faixas={data.faixas} titulo={`${TXT_TITULO_ALUNOS} por faixa`} dark /></div>}
         {secaoExpandida === "perto" && <div style={{ marginTop: 18 }}><AlunosPertoDeGraduar data={data} prof={prof} dark={true} /></div>}
 
         {secaoExpandida === "aniversario" && (
@@ -2929,7 +2966,7 @@ function PlanosProfessor({ data, save, prof, dark = true }) {
   return (
     <div>
       <div style={light ? blockTitleStyle : { ...blockTitleStyle, color: "#F5F3EC" }}>💳 Meus planos</div>
-      <p style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#9B9891", marginTop: 0 }}>Planos que só você usa pra vincular aos seus alunos — outros professores não veem. Pra planos que valem pra academia toda, peça pra administração cadastrar.</p>
+      <p style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#9B9891", marginTop: 0 }}>{VE_TODOS_ALUNOS ? "Planos cadastrados por você — só você e a administração alteram, mas os outros professores também podem usá-los no cadastro dos alunos." : "Planos que só você usa pra vincular aos seus alunos — outros professores não veem. Pra planos que valem pra academia toda, peça pra administração cadastrar."}</p>
       {aviso && <div style={{ fontSize: 12.5, color: "#FF8A80", fontWeight: 600, marginBottom: 10 }}>{aviso}</div>}
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
         <Button icon={Plus} onClick={() => setNovo(true)}>Novo plano</Button>
@@ -3964,15 +4001,15 @@ function PresencaManualAdmin({ data, save }) {
 function RelatorioListaAlunosProfessor({ data, prof }) {
   const light = useDesktopLight();
   const [erro, setErro] = useState("");
-  const meusAlunos = data.alunos.filter((a) => a.professorId === prof.id);
+  const meusAlunos = alunosDoProf(data, prof);
   return (
     <Card style={light ? { marginBottom: 16 } : { marginBottom: 16, background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}>
       <div style={light ? blockTitleStyle : { ...blockTitleStyle, color: "#F5F3EC" }}>Lista de alunos</div>
-      <p style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#C9C4B4", marginTop: 0 }}>Gera um PDF com o total e a lista de todos os seus {meusAlunos.length} aluno(s) vinculado(s).</p>
+      <p style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#C9C4B4", marginTop: 0 }}>{VE_TODOS_ALUNOS ? `Gera um PDF com o total e a lista dos ${meusAlunos.length} aluno(s) da academia.` : `Gera um PDF com o total e a lista de todos os seus ${meusAlunos.length} aluno(s) vinculado(s).`}</p>
       {meusAlunos.length === 0 ? (
-        <Empty dark>Nenhum aluno vinculado a você ainda.</Empty>
+        <Empty dark>{TXT_NENHUM_ALUNO}</Empty>
       ) : (
-        <Button icon={Users} variant="gold" onClick={() => { setErro(""); gerarRelatorioListaAlunos(data, setErro, meusAlunos, prof.nome); }}>Gerar lista de alunos (PDF)</Button>
+        <Button icon={Users} variant="gold" onClick={() => { setErro(""); gerarRelatorioListaAlunos(data, setErro, meusAlunos, tituloRelatorioProf(prof)); }}>Gerar lista de alunos (PDF)</Button>
       )}
       {erro && <div style={{ marginTop: 8, fontSize: 12.5, color: "#FF8A80", fontWeight: 600 }}>{erro}</div>}
     </Card>
@@ -4096,7 +4133,7 @@ function BuscaAluno({ alunos, alunoId, onSelecionar, dark = true, disabled = fal
 
 function CheckinRetroativoProfessor({ data, save, prof, dark = true }) {
   dark = dark && !useDesktopLight();
-  const meusAlunos = data.alunos.filter((a) => a.professorId === prof.id);
+  const meusAlunos = alunosDoProf(data, prof);
   const [alunoId, setAlunoId] = useState(meusAlunos[0]?.id || "");
   const [dataSel, setDataSel] = useState(hoje());
   const [acao, setAcao] = useState(false);
@@ -4140,7 +4177,7 @@ function CheckinRetroativoProfessor({ data, save, prof, dark = true }) {
       <div style={dark ? { ...blockTitleStyle, color: "#FFFFFF" } : blockTitleStyle}>Gerenciar check-ins do aluno</div>
       <p style={{ fontSize: 12.5, color: corMuted, marginTop: 0 }}>Lance um check-in esquecido de um dia anterior, ou remova algum lançado por engano — os dois contam pra graduação e aparecem no histórico dele.</p>
       {meusAlunos.length === 0 ? (
-        <Empty dark={dark}>Nenhum aluno vinculado a você ainda.</Empty>
+        <Empty dark={dark}>{TXT_NENHUM_ALUNO}</Empty>
       ) : (
         <>
           <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
@@ -4205,7 +4242,7 @@ function PresencaManualProfessor({ data, save, prof, dark = true }) {
   dark = dark && !useDesktopLight();
   const turmasDisponiveis = data.turmas.filter((t) => !t.professorId || t.professorId === prof.id);
   const [turmaId, setTurmaId] = useState(turmasDisponiveis[0]?.id || "");
-  const meusAlunos = data.alunos.filter((a) => a.professorId === prof.id);
+  const meusAlunos = alunosDoProf(data, prof);
   const sessaoAtiva = data.sessoes.find((s) => s.treinoId === turmaId && s.professorId === prof.id && s.ativa);
 
   const abrirSessao = async () => {
@@ -4232,7 +4269,7 @@ function PresencaManualProfessor({ data, save, prof, dark = true }) {
       {!sessaoAtiva ? (
         <div style={{ marginTop: 10 }}><Button variant="gold" icon={CalendarCheck} onClick={abrirSessao}>Abrir check-in desta turma agora</Button></div>
       ) : meusAlunos.length === 0 ? (
-        <div style={{ marginTop: 10 }}><Empty dark={dark}>Nenhum aluno vinculado a você ainda.</Empty></div>
+        <div style={{ marginTop: 10 }}><Empty dark={dark}>{TXT_NENHUM_ALUNO}</Empty></div>
       ) : (
         <div style={{ marginTop: 10 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 320, overflowY: "auto" }}>
@@ -4297,7 +4334,7 @@ function RecadoMestreProfessor({ data, prof, dark = true }) {
   const [confirmando, setConfirmando] = useState(false);
   const inputCameraRef = useRef(null);
   const inputGaleriaRef = useRef(null);
-  const meusAlunos = data.alunos.filter((a) => a.professorId === prof.id);
+  const meusAlunos = alunosDoProf(data, prof);
 
   const onArquivo = (e) => {
     const f = e.target.files?.[0];
@@ -4313,7 +4350,7 @@ function RecadoMestreProfessor({ data, prof, dark = true }) {
     try {
       const url = await uploadArquivo("recados", arquivo, setProgresso);
       await pg.upsert("recados", [{ professor_id: prof.id, video_url: url, destinatarios_total: meusAlunos.length }]);
-      notificarPush("Recado do Mestre 🥋", `Seu professor ${prof.nome} gravou uma mensagem pra você. Assista antes que suma!`, { professorAlunosId: prof.id });
+      notificarPush("Recado do Mestre 🥋", `${VE_TODOS_ALUNOS ? "O" : "Seu"} professor ${prof.nome} gravou uma mensagem pra você. Assista antes que suma!`, destinoPushProf(prof));
       setMsg("Recado enviado! Cada aluno recebe a notificação, e o vídeo some assim que todos assistirem.");
       setArquivo(null);
     } catch (e) {
@@ -4332,10 +4369,10 @@ function RecadoMestreProfessor({ data, prof, dark = true }) {
     <Card style={{ marginBottom: 16, ...(dark ? { background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" } : {}) }}>
       <div style={dark ? { ...blockTitleStyle, color: corTexto } : blockTitleStyle}>🎥 Recado do Mestre</div>
       <p style={{ fontSize: 12.5, color: corMuted, marginTop: 0 }}>
-        Grave (ou escolha) um vídeo curto — chega como notificação pra todos os seus {meusAlunos.length} aluno(s), e some assim que cada um assistir. Ninguém consegue salvar de propósito, mas lembre que não existe forma de impedir 100% que alguém grave a tela.
+        Grave (ou escolha) um vídeo curto — chega como notificação pra {VE_TODOS_ALUNOS ? "todos os" : "todos os seus"} {meusAlunos.length} aluno(s), e some assim que cada um assistir. Ninguém consegue salvar de propósito, mas lembre que não existe forma de impedir 100% que alguém grave a tela.
       </p>
       {meusAlunos.length === 0 ? (
-        <Empty dark={dark}>Nenhum aluno vinculado a você ainda.</Empty>
+        <Empty dark={dark}>{TXT_NENHUM_ALUNO}</Empty>
       ) : arquivo ? (
         <div>
           <div style={{ background: corBadge, border: corBorda, borderRadius: 8, padding: "8px 12px", fontSize: 12.5, color: corTexto, marginBottom: 10 }}>{arquivo.name}</div>
@@ -4408,9 +4445,9 @@ function FotoTreinoProfessor({ prof, dark = true }) {
       const criadoEm = new Date().toISOString();
       const id = uid();
       await pg.upsert("fotos_treino", [{ id, professor_id: prof.id, foto_url: url, criado_em: criadoEm }]);
-      notificarPush("Foto do treino 📸", `${prof.nome} postou uma foto do treino de hoje.`, { professorAlunosId: prof.id });
+      notificarPush("Foto do treino 📸", `${prof.nome} postou uma foto do treino de hoje.`, destinoPushProf(prof));
       setFotos((prev) => [{ id, fotoUrl: url, criadoEm }, ...prev]);
-      setMsg("Foto publicada! Fica visível pros seus alunos por 5 dias.");
+      setMsg(`Foto publicada! Fica visível ${VE_TODOS_ALUNOS ? "pra todos os alunos" : "pros seus alunos"} por 5 dias.`);
       cancelarEscolha();
     } catch (e) {
       setMsg("Não foi possível enviar: " + (e?.message || "tenta de novo."));
@@ -4437,7 +4474,7 @@ function FotoTreinoProfessor({ prof, dark = true }) {
     <Card style={{ marginBottom: 16, ...(dark ? { background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" } : {}) }}>
       <div style={dark ? { ...blockTitleStyle, color: corTexto } : blockTitleStyle}>📸 Foto do treino</div>
       <p style={{ fontSize: 12.5, color: corMuted, marginTop: 0 }}>
-        Tire (ou escolha) uma foto do treino de hoje — todos os seus alunos recebem a notificação, e ela some sozinha depois de 5 dias.
+        Tire (ou escolha) uma foto do treino de hoje — {VE_TODOS_ALUNOS ? "todos os alunos da academia" : "todos os seus alunos"} recebem a notificação, e ela some sozinha depois de 5 dias.
       </p>
       {arquivo ? (
         <div>
@@ -4487,8 +4524,7 @@ function FotoTreinoProfessor({ prof, dark = true }) {
 function AlunosPertoDeGraduar({ data, prof, dark = true }) {
   dark = dark && !useDesktopLight();
   const LIMITE_AULAS = 5;
-  const candidatos = data.alunos
-    .filter((a) => a.professorId === prof.id)
+  const candidatos = alunosDoProf(data, prof)
     .map((a) => ({ aluno: a, info: progressoGraduacaoInfo(data.faixas, a.faixaId, a.grau, aulasDesdeGraduacao(a, data.checkins), categoriaEtaria(a.dataNascimento)) }))
     .filter((c) => c.info.restantes !== null && c.info.restantes <= LIMITE_AULAS)
     .sort((a, b) => a.info.restantes - b.info.restantes);
@@ -4541,19 +4577,19 @@ function RelatorioCheckinsProfessor({ data, prof, dark = true }) {
   dark = dark && !useDesktopLight();
   const [dataSel, setDataSel] = useState(hoje());
   const [erro, setErro] = useState("");
-  const meusAlunos = data.alunos.filter((a) => a.professorId === prof.id);
+  const meusAlunos = alunosDoProf(data, prof);
   return (
     <Card style={{ marginBottom: 16, ...(dark ? { background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" } : {}) }}>
       <div style={dark ? { ...blockTitleStyle, color: "#FFFFFF" } : blockTitleStyle}>Relatório de check-ins por data</div>
-      <p style={{ fontSize: 12.5, color: dark ? "#C9C4B4" : "#5A5648", marginTop: 0 }}>Escolha uma data e veja quais dos seus alunos fizeram check-in naquele dia — abre pronto para salvar como PDF.</p>
+      <p style={{ fontSize: 12.5, color: dark ? "#C9C4B4" : "#5A5648", marginTop: 0 }}>Escolha uma data e veja quais {TXT_DOS_ALUNOS} fizeram check-in naquele dia — abre pronto para salvar como PDF.</p>
       {meusAlunos.length === 0 ? (
-        <Empty dark={dark}>Nenhum aluno vinculado a você ainda. Peça para a administração te vincular no cadastro do aluno.</Empty>
+        <Empty dark={dark}>{TXT_NENHUM_ALUNO_VINCULAR}</Empty>
       ) : (
         <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
           <div style={{ flex: "0 1 180px", minWidth: 140 }}>
             <Field label="Data" labelColor={dark ? "#C9C4B4" : undefined}><input type="date" style={{ ...(dark ? inputStyleDark : inputStyle), maxWidth: 170 }} value={dataSel} onChange={(e) => setDataSel(e.target.value)} /></Field>
           </div>
-          <Button icon={CalendarCheck} variant="gold" onClick={() => { setErro(""); gerarRelatorioCheckins(data, dataSel, setErro, meusAlunos, prof.nome); }}>Gerar relatório (PDF)</Button>
+          <Button icon={CalendarCheck} variant="gold" onClick={() => { setErro(""); gerarRelatorioCheckins(data, dataSel, setErro, meusAlunos, tituloRelatorioProf(prof)); }}>Gerar relatório (PDF)</Button>
         </div>
       )}
       {erro && <div style={{ marginTop: 8, fontSize: 12.5, color: dark ? "#FF8A80" : "#B3261E", fontWeight: 600 }}>{erro}</div>}
@@ -4565,21 +4601,21 @@ function RelatorioMensalProfessor({ data, prof, dark = true }) {
   dark = dark && !useDesktopLight();
   const [mes, setMes] = useState(() => new Date().toISOString().slice(0, 7));
   const [erro, setErro] = useState("");
-  const meusAlunos = data.alunos.filter((a) => a.professorId === prof.id);
+  const meusAlunos = alunosDoProf(data, prof);
   return (
     <Card style={{ marginBottom: 16, ...(dark ? { background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" } : {}) }}>
-      <div style={dark ? { ...blockTitleStyle, color: "#FFFFFF" } : blockTitleStyle}>Meu relatório financeiro</div>
+      <div style={dark ? { ...blockTitleStyle, color: "#FFFFFF" } : blockTitleStyle}>{VE_TODOS_ALUNOS ? "Relatório financeiro" : "Meu relatório financeiro"}</div>
       <p style={{ fontSize: 12.5, color: dark ? "#C9C4B4" : "#5A5648", marginTop: 0 }}>
-        Gera o relatório em PDF só dos seus {meusAlunos.length} aluno(s) vinculado(s) — nenhum outro professor vê este relatório.
+        {VE_TODOS_ALUNOS ? `Gera o relatório em PDF dos ${meusAlunos.length} aluno(s) da academia.` : `Gera o relatório em PDF só dos seus ${meusAlunos.length} aluno(s) vinculado(s) — nenhum outro professor vê este relatório.`}
       </p>
       {meusAlunos.length === 0 ? (
-        <Empty dark={dark}>Nenhum aluno vinculado a você ainda. Peça para a administração te vincular no cadastro do aluno.</Empty>
+        <Empty dark={dark}>{TXT_NENHUM_ALUNO_VINCULAR}</Empty>
       ) : (
         <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
           <div style={{ flex: "0 1 180px", minWidth: 140 }}>
             <Field label="Mês do relatório" labelColor={dark ? "#C9C4B4" : undefined}><input type="month" style={{ ...(dark ? inputStyleDark : inputStyle), maxWidth: 170 }} value={mes} onChange={(e) => setMes(e.target.value)} /></Field>
           </div>
-          <Button icon={CreditCard} variant="gold" onClick={() => { setErro(""); gerarRelatorioMensal(data, mes, setErro, meusAlunos, prof.nome); }}>Gerar relatório (PDF)</Button>
+          <Button icon={CreditCard} variant="gold" onClick={() => { setErro(""); gerarRelatorioMensal(data, mes, setErro, meusAlunos, tituloRelatorioProf(prof)); }}>Gerar relatório (PDF)</Button>
         </div>
       )}
       {erro && <div style={{ marginTop: 8, fontSize: 12.5, color: "#FF8A80", fontWeight: 600 }}>{erro}</div>}
@@ -4676,20 +4712,20 @@ function AvisosProfessor({ data, save, prof, dark = false }) {
   dark = dark && !useDesktopLight();
   const [novo, setNovo] = useState(false);
   const avisosVisiveis = [...(data.avisos || [])]
-    .filter((a) => !a.professorId || a.professorId === prof.id)
+    .filter((a) => conteudoVisivel(a, prof.id))
     .sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || ""));
 
   const adicionar = async (form) => {
     const aviso = { id: uid(), criadoEm: new Date().toISOString(), professorId: prof.id, ...form };
     await save({ ...data, avisos: [...(data.avisos || []), aviso] });
-    notificarPush(aviso.titulo, aviso.mensagem || "", { professorAlunosId: prof.id });
+    notificarPush(aviso.titulo, aviso.mensagem || "", destinoPushProf(prof));
     setNovo(false);
   };
   const remover = async (id) => { await save({ ...data, avisos: (data.avisos || []).filter((a) => a.id !== id) }); };
 
   return (
     <div>
-      <p style={{ fontSize: 12.5, color: dark ? "#C9C4B4" : "#5A5648", marginTop: 0 }}>Avisos que você publicar aqui vão só pros seus alunos vinculados — alunos de outros professores não recebem.</p>
+      <p style={{ fontSize: 12.5, color: dark ? "#C9C4B4" : "#5A5648", marginTop: 0 }}>Avisos que você publicar aqui vão {TXT_PROS_ALUNOS}{VE_TODOS_ALUNOS ? "." : " — alunos de outros professores não recebem."}</p>
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
         <Button icon={Plus} variant={dark ? "vermelho" : "primary"} onClick={() => setNovo(true)}>Novo aviso</Button>
       </div>
@@ -4700,7 +4736,7 @@ function AvisosProfessor({ data, save, prof, dark = false }) {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
               <div>
                 <span style={{ fontSize: 10.5, fontWeight: 700, color: "#C9A227", textTransform: "uppercase" }}>
-                  {a.tipo || "Aviso"}{!a.professorId ? " · Geral (todos)" : a.professorId === prof.id ? " · Só seus alunos" : ""}
+                  {a.tipo || "Aviso"} · {rotuloPublicacao(data, a, prof)}
                 </span>
                 <div style={{ fontWeight: 700, fontSize: 14, color: dark ? "#FFFFFF" : undefined }}>{a.titulo}</div>
                 {a.mensagem && <div style={{ fontSize: 12.5, color: dark ? "#C9C4B4" : "#5A5648", marginTop: 2 }}>{a.mensagem}</div>}
@@ -4832,7 +4868,7 @@ function VideosProfessor({ data, save, prof }) {
   const light = useDesktopLight();
   const [novo, setNovo] = useState(false);
   const videosVisiveis = [...(data.videos || [])]
-    .filter((v) => !v.professorId || v.professorId === prof.id)
+    .filter((v) => conteudoVisivel(v, prof.id))
     .sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || ""));
 
   const unidadeDoProfessor = (data.unidades || []).find((u) => u.id === prof.unidadeId) || null;
@@ -4846,7 +4882,7 @@ function VideosProfessor({ data, save, prof }) {
 
   return (
     <div>
-      <p style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#9B9891", marginTop: 0 }}>Vídeos que você publicar aqui aparecem só pros seus alunos vinculados{unidadeDoProfessor ? ` da unidade ${unidadeDoProfessor.nome}` : ""} — cole um link do YouTube ou envie um arquivo MP4 direto.</p>
+      <p style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#9B9891", marginTop: 0 }}>Vídeos que você publicar aqui aparecem {TXT_PROS_ALUNOS}{unidadeDoProfessor ? ` da unidade ${unidadeDoProfessor.nome}` : ""} — cole um link do YouTube ou envie um arquivo MP4 direto.</p>
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
         <Button icon={Plus} onClick={() => setNovo(true)}>Novo vídeo</Button>
       </div>
@@ -4857,7 +4893,7 @@ function VideosProfessor({ data, save, prof }) {
           return (
           <Card dark key={v.id} style={{ padding: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
             <div>
-              <span style={{ fontSize: 10, fontWeight: 700, color: "#C9A227", textTransform: "uppercase" }}>{!v.professorId ? "Geral (todos)" : "Só seus alunos"}{unidadeDoVideo ? ` · ${unidadeDoVideo.nome}` : ""}</span>
+              <span style={{ fontSize: 10, fontWeight: 700, color: "#C9A227", textTransform: "uppercase" }}>{rotuloPublicacao(data, v, prof)}{unidadeDoVideo ? ` · ${unidadeDoVideo.nome}` : ""}</span>
               <div style={{ fontWeight: 700, fontSize: 14, color: light ? LIGHT.text : "#F5F3EC" }}>{v.titulo}</div>
               {v.legenda && <div style={{ fontSize: 12, color: light ? LIGHT.muted : "#9B9891" }}>{v.legenda}</div>}
               <a href={v.url} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: "#C9A227" }}>{v.url.includes("/storage/v1/") ? "Arquivo enviado" : v.url}</a>
@@ -4999,7 +5035,7 @@ function ProdutosProfessor({ data, save, prof }) {
   const light = useDesktopLight();
   const [novo, setNovo] = useState(false);
   const meusProdutos = [...(data.produtos || [])]
-    .filter((p) => p.professorId === prof.id)
+    .filter((p) => VE_TODOS_ALUNOS || p.professorId === prof.id)
     .sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || ""));
 
   const adicionar = async (form) => {
@@ -5015,7 +5051,7 @@ function ProdutosProfessor({ data, save, prof }) {
 
   return (
     <div>
-      <p style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#9B9891", marginTop: 0 }}>Produtos que você cadastrar aqui aparecem pros seus alunos vinculados verem (kimonos, bonés, patches etc.) — é só pra divulgar, a venda combina direto com o aluno.</p>
+      <p style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#9B9891", marginTop: 0 }}>Produtos que você cadastrar aqui aparecem {VE_TODOS_ALUNOS ? "pra todos os alunos da academia" : "pros seus alunos vinculados"} verem (kimonos, bonés, patches etc.) — é só pra divulgar, a venda combina direto com o aluno.</p>
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
         <Button icon={Plus} onClick={() => setNovo(true)}>Novo produto</Button>
       </div>
@@ -5031,8 +5067,9 @@ function ProdutosProfessor({ data, save, prof }) {
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontWeight: 700, fontSize: 14, color: light ? LIGHT.text : "#F5F3EC" }}>{p.nome}</div>
               <div style={{ fontSize: 13, color: "#C9A227", fontWeight: 600 }}>R$ {p.valor.toFixed(2)}</div>
+              {VE_TODOS_ALUNOS && <div style={{ fontSize: 11, color: light ? LIGHT.muted : "#9B9891" }}>{rotuloPublicacao(data, p, prof)}</div>}
             </div>
-            <ConfirmDelete onConfirm={() => remover(p.id)} />
+            {p.professorId === prof.id && <ConfirmDelete onConfirm={() => remover(p.id)} />}
           </Card>
         ))}
         {meusProdutos.length === 0 && <Empty dark>Nenhum produto cadastrado ainda.</Empty>}
@@ -5097,8 +5134,8 @@ function VendaForm({ produtos, alunos, onSave, onCancel }) {
 function VendasProfessor({ data, save, prof }) {
   const light = useDesktopLight();
   const [novo, setNovo] = useState(false);
-  const meusAlunos = data.alunos.filter((a) => a.professorId === prof.id);
-  const meusProdutos = (data.produtos || []).filter((p) => p.professorId === prof.id);
+  const meusAlunos = alunosDoProf(data, prof);
+  const meusProdutos = (data.produtos || []).filter((p) => VE_TODOS_ALUNOS || p.professorId === prof.id);
   const minhasVendas = [...(data.vendas || [])]
     .filter((v) => v.professorId === prof.id)
     .sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || ""));
@@ -5115,7 +5152,7 @@ function VendasProfessor({ data, save, prof }) {
 
   return (
     <div>
-      <p style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#9B9891", marginTop: 0 }}>Registre aqui as vendas de produtos pros seus alunos — vale tanto pra um produto já cadastrado quanto pra algo avulso (não precisa estar na lista de produtos).</p>
+      <p style={{ fontSize: 12.5, color: light ? LIGHT.muted : "#9B9891", marginTop: 0 }}>Registre aqui as vendas de produtos {VE_TODOS_ALUNOS ? "pros alunos" : "pros seus alunos"} — vale tanto pra um produto já cadastrado quanto pra algo avulso (não precisa estar na lista de produtos).</p>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
         <div style={{ fontSize: 13, color: light ? LIGHT.muted : "#C9C4B4" }}>{minhasVendas.length} venda(s) · total <span style={{ color: "#C9A227", fontWeight: 700 }}>R$ {totalVendido.toFixed(2)}</span></div>
         <Button icon={Plus} onClick={() => setNovo(true)}>Registrar venda</Button>
@@ -6217,7 +6254,7 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
   const tabs = [
     { id: "dashboard", label: "Dashboard" },
     { id: "inicio", label: "Início" },
-    { id: "alunos", label: "Meus Alunos" },
+    { id: "alunos", label: VE_TODOS_ALUNOS ? "Alunos" : "Meus Alunos" },
     { id: "checkins", label: "Check-ins" },
     { id: "turmas", label: "Turmas" },
     { id: "financeiro", label: "Financeiro" },
@@ -6232,7 +6269,7 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
     { id: "perfil", label: "Meu Perfil" },
   ];
 
-  const meusAlunos = data.alunos.filter((a) => a.professorId === prof.id);
+  const meusAlunos = alunosDoProf(data, prof);
   const alunosFiltrados = meusAlunos
     .filter((a) => !filtroFaixaAluno || a.faixaId === filtroFaixaAluno)
     .filter((a) => {
@@ -6317,7 +6354,7 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
       <div style={{ flex: 1, padding: "24px 28px 40px", minWidth: 0, color: light ? LIGHT.text : "#F5F3EC" }}>
         <div style={{ marginBottom: 20 }}>
           <div style={{ fontFamily: "Oswald", fontWeight: light ? 600 : 700, fontSize: light ? 26 : 21, color: light ? LIGHT.ink : "#C9A227", textTransform: light ? "none" : "uppercase" }}>{tabs.find((t) => t.id === tab)?.label}</div>
-          <div style={{ fontSize: light ? 13.5 : 12, color: light ? LIGHT.muted : "#9B9891", marginTop: light ? 5 : 2 }}>Logado como professor · {prof.nome} · só os seus alunos vinculados</div>
+          <div style={{ fontSize: light ? 13.5 : 12, color: light ? LIGHT.muted : "#9B9891", marginTop: light ? 5 : 2 }}>Logado como professor · {prof.nome}{VE_TODOS_ALUNOS ? "" : " · só os seus alunos vinculados"}</div>
         </div>
 
       <div key={light ? tab : undefined} className={light ? "qg-fade-in" : undefined}>
@@ -6335,12 +6372,12 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px,1fr))", gap: 12, marginBottom: 14 }}>
             <StatCard label="Alunos ativos" value={meusAlunos.filter((a) => a.ativo !== false).length} icon={Users} dark chipBg="#EEF1FA" chipColor="#12213B" />
             <StatCard label="Turmas" value={data.turmas.length} icon={CalendarCheck} dark chipBg="#EEF1FA" chipColor="#12213B" />
-            <StatCard label="Check-ins hoje" value={data.checkins.filter((c) => { const al = data.alunos.find((a) => a.id === c.alunoId); return al && al.professorId === prof.id && dataLocalDe(c.dataHora) === hoje(); }).length} icon={QrCode} dark chipBg={LIGHT.goodSoft} chipColor={LIGHT.good} />
+            <StatCard label="Check-ins hoje" value={data.checkins.filter((c) => { const al = data.alunos.find((a) => a.id === c.alunoId); return al && (VE_TODOS_ALUNOS || al.professorId === prof.id) && dataLocalDe(c.dataHora) === hoje(); }).length} icon={QrCode} dark chipBg={LIGHT.goodSoft} chipColor={LIGHT.good} />
           </div>
 
-          <AlunosPorFaixaChart alunos={meusAlunos} faixas={data.faixas} titulo="Meus alunos por faixa" dark />
+          <AlunosPorFaixaChart alunos={meusAlunos} faixas={data.faixas} titulo={`${TXT_TITULO_ALUNOS} por faixa`} dark />
           <PagamentosChart data={data} alunosFiltro={meusAlunos} dark />
-          <AlunosPorMesLineChart data={data} alunosFiltro={meusAlunos} titulo="Meus alunos por mês (matrícula)" dark />
+          <AlunosPorMesLineChart data={data} alunosFiltro={meusAlunos} titulo={`${TXT_TITULO_ALUNOS} por mês (matrícula)`} dark />
           <AniversariantesCard alunos={meusAlunos} dark />
         </div>
       )}
@@ -6348,7 +6385,7 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
       {tab === "inicio" && (
         <div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px,1fr))", gap: 12, marginBottom: 14 }}>
-            <StatCard label="Meus alunos" value={meusAlunos.length} icon={Users} dark chipBg="#EEF1FA" chipColor="#12213B" />
+            <StatCard label={TXT_TITULO_ALUNOS} value={meusAlunos.length} icon={Users} dark chipBg="#EEF1FA" chipColor="#12213B" />
             <StatCard label="Aula ativa" value={sessaoAtiva ? "Sim" : "Não"} icon={CalendarCheck} dark chipBg={LIGHT.goodSoft} chipColor={LIGHT.good} />
           </div>
 
@@ -6379,7 +6416,7 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
 
           <FotoTreinoProfessor prof={prof} dark />
 
-          <AlunosPorFaixaChart alunos={meusAlunos} faixas={data.faixas} titulo="Meus alunos por faixa" dark />
+          <AlunosPorFaixaChart alunos={meusAlunos} faixas={data.faixas} titulo={`${TXT_TITULO_ALUNOS} por faixa`} dark />
 
           <AlunosPertoDeGraduar data={data} prof={prof} dark />
         </div>
@@ -6388,19 +6425,19 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
       {tab === "alunos" && (
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
-            <div style={{ fontSize: 13, color: light ? LIGHT.muted : "#9B9891" }}>{meusAlunos.length} aluno(s) vinculados a você</div>
+            <div style={{ fontSize: 13, color: light ? LIGHT.muted : "#9B9891" }}>{txtTotalAlunos(meusAlunos.length)}</div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <Button icon={Users} variant="gold" onClick={() => { setErroRelatorioAlunos(""); if (meusAlunos.length === 0) { setErroRelatorioAlunos("Nenhum aluno vinculado a você ainda."); return; } gerarRelatorioListaAlunos(data, setErroRelatorioAlunos, meusAlunos, prof.nome); }}>Lista de alunos (PDF)</Button>
+              <Button icon={Users} variant="gold" onClick={() => { setErroRelatorioAlunos(""); if (meusAlunos.length === 0) { setErroRelatorioAlunos(TXT_NENHUM_ALUNO); return; } gerarRelatorioListaAlunos(data, setErroRelatorioAlunos, meusAlunos, tituloRelatorioProf(prof)); }}>Lista de alunos (PDF)</Button>
               <Button icon={Plus} onClick={() => setNovoAluno(true)}>Novo aluno</Button>
             </div>
           </div>
           {erroRelatorioAlunos && <div style={{ marginBottom: 10, fontSize: 12.5, color: "#FF8A80", fontWeight: 600 }}>{erroRelatorioAlunos}</div>}
           {!sessaoAtiva && <p style={{ fontSize: 12, color: light ? LIGHT.muted : "#9B9891", marginTop: 0 }}>Inicie a aula na aba Início para poder marcar presença manualmente.</p>}
           {novoAluno && (
-            <PersonForm tipo="aluno" planos={data.planos.filter((p) => !p.professorId || p.professorId === prof.id)} faixas={data.faixas} professores={data.professores} unidadeFixa={(data.unidades || []).find((u) => u.id === prof.unidadeId) || null} turmas={data.turmas} initial={{ professorId: prof.id }} onCancel={() => setNovoAluno(false)} onSave={addAlunoProf} />
+            <PersonForm tipo="aluno" planos={planosDoProf(data, prof)} faixas={data.faixas} professores={data.professores} unidadeFixa={(data.unidades || []).find((u) => u.id === prof.unidadeId) || null} turmas={data.turmas} initial={{ professorId: prof.id }} onCancel={() => setNovoAluno(false)} onSave={addAlunoProf} />
           )}
           {editandoAluno && (
-            <PersonForm tipo="aluno" planos={data.planos.filter((p) => !p.professorId || p.professorId === prof.id)} faixas={data.faixas} professores={data.professores} unidadeFixa={(data.unidades || []).find((u) => u.id === prof.unidadeId) || null} turmas={data.turmas} initial={editandoAluno} onCancel={() => setEditandoAluno(null)} onSave={(form) => editarAlunoProf(editandoAluno.id, form)} />
+            <PersonForm tipo="aluno" planos={planosDoProf(data, prof)} faixas={data.faixas} professores={data.professores} {...unidadeEdicaoProf(data, prof)} turmas={data.turmas} initial={editandoAluno} onCancel={() => setEditandoAluno(null)} onSave={(form) => editarAlunoProf(editandoAluno.id, form)} />
           )}
           <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
             <input style={{ ...inputStyle, flex: 1, minWidth: 160 }} placeholder="Buscar por nome ou apelido..." value={buscaAluno} onChange={(e) => setBuscaAluno(e.target.value)} />
@@ -6430,6 +6467,7 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 600, fontSize: 14, color: light ? LIGHT.text : "#F5F3EC" }}>{a.codigo && <span style={{ color: "#C9A227", fontWeight: 700 }}>{formatarCodigoAluno(a.codigo)} · </span>}{a.nome}{a.apelido && <span style={{ fontWeight: 400, color: light ? LIGHT.muted : "#9B9891" }}> "{a.apelido}"</span>}</div>
                       <BeltBar faixas={data.faixas} faixaId={a.faixaId} grau={a.grau} textColor={light ? LIGHT.text : "#F5F3EC"} />
+                      {VE_TODOS_ALUNOS && <div style={{ fontSize: 11, color: light ? LIGHT.muted : "#9B9891" }}>Professor: {data.professores.find((p) => p.id === a.professorId)?.nome || "nenhum"}</div>}
                       {!aberto && (
                         <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
                           {!emDia && <Tag ok={false}>Pendente</Tag>}
@@ -6532,7 +6570,7 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
                 </Card>
               );
             })}
-            {meusAlunos.length === 0 && <Empty dark>Nenhum aluno vinculado a você ainda. Peça para a administração te vincular no cadastro do aluno.</Empty>}
+            {meusAlunos.length === 0 && <Empty dark>{TXT_NENHUM_ALUNO_VINCULAR}</Empty>}
             {meusAlunos.length > 0 && alunosFiltrados.length === 0 && <Empty dark>Nenhum aluno encontrado com esse filtro.</Empty>}
           </div>
         </div>
@@ -6730,7 +6768,7 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
 
   useEffect(() => {
     if (!data.avisos || data.avisos.length === 0) return;
-    const avisosDoProfessor = data.avisos.filter((a) => !a.professorId || a.professorId === prof.id);
+    const avisosDoProfessor = data.avisos.filter((a) => conteudoVisivel(a, prof.id));
     const chaveVistos = `qg-avisos-vistos-prof-${prof.id}`;
     let vistos = [];
     try { vistos = JSON.parse(localStorage.getItem(chaveVistos) || "[]"); } catch (_) {}
@@ -6827,9 +6865,9 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
     await save({ ...data, alunos });
   };
   const removerAlunoProf = async (id) => {
-    const aluno = data.alunos.find((a) => a.id === id && a.professorId === prof.id);
+    const aluno = alunosDoProf(data, prof).find((a) => a.id === id);
     if (!aluno) return;
-    const alunos = data.alunos.filter((a) => !(a.id === id && a.professorId === prof.id));
+    const alunos = data.alunos.filter((a) => a.id !== id);
     await save({ ...data, alunos });
     await excluirDadosRelacionadosAluno(id);
     if (aluno.authUserId) await excluirContaAuth(aluno.authUserId);
@@ -6946,7 +6984,7 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
                 {prof.faixaId && <div style={{ marginTop: 16 }}><BeltBar faixas={data.faixas} faixaId={prof.faixaId} grau={prof.grau} size="lg" textColor="#FFFFFF" /></div>}
 
                 <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 10, marginTop: 14 }}>
-                  <StatTile numero={data.alunos.filter((a) => a.professorId === prof.id).length} label="alunos vinculados" />
+                  <StatTile numero={alunosDoProf(data, prof).length} label={VE_TODOS_ALUNOS ? "alunos da academia" : "alunos vinculados"} />
                   <StatTile numero={sessaoAtiva ? "Ativa" : "—"} label={sessaoAtiva ? "aula em andamento" : "nenhuma aula ativa"} />
                 </div>
               </>
@@ -6969,7 +7007,7 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
 
           {!editandoPerfil && (
             <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-              <ActionPill onClick={() => irParaPagina(1)}>Meus alunos</ActionPill>
+              <ActionPill onClick={() => irParaPagina(1)}>{TXT_TITULO_ALUNOS}</ActionPill>
               <ActionPill onClick={() => irParaPagina(3)}>Financeiro</ActionPill>
               <ActionPill onClick={() => setEditandoPerfil(true)}>Editar</ActionPill>
             </div>
@@ -7006,7 +7044,7 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
 
           <FotoTreinoProfessor prof={prof} dark={true} />
 
-          <AlunosPorFaixaChart alunos={data.alunos.filter((a) => a.professorId === prof.id)} faixas={data.faixas} titulo="Meus alunos por faixa" dark />
+          <AlunosPorFaixaChart alunos={alunosDoProf(data, prof)} faixas={data.faixas} titulo={`${TXT_TITULO_ALUNOS} por faixa`} dark />
 
           <AlunosPertoDeGraduar data={data} prof={prof} />
         </div>
@@ -7015,18 +7053,18 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
         <div className="qg-sem-barra" style={{ flex: "0 0 100%", width: "100%", boxSizing: "border-box", scrollSnapAlign: "start", scrollSnapStop: "always", overflowY: "auto", touchAction: "pan-y", padding: "20px 20px 24px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
             <div>
-              <div style={{ fontFamily: "Oswald", fontWeight: 700, fontSize: 20, color: "#fff", textTransform: "uppercase" }}>🤼 Meus alunos</div>
-              <div style={{ fontSize: 12.5, color: "#9B9891" }}>{data.alunos.filter((a) => a.professorId === prof.id).length} aluno(s) vinculados a você</div>
+              <div style={{ fontFamily: "Oswald", fontWeight: 700, fontSize: 20, color: "#fff", textTransform: "uppercase" }}>🤼 {TXT_TITULO_ALUNOS}</div>
+              <div style={{ fontSize: 12.5, color: "#9B9891" }}>{txtTotalAlunos(alunosDoProf(data, prof).length)}</div>
             </div>
             <Button icon={Plus} variant="vermelho" onClick={() => setNovoAluno(true)}>Novo aluno</Button>
           </div>
           {!sessaoAtiva && <p style={{ fontSize: 12, color: "#9B9891", marginTop: 0 }}>Inicie a aula na página Início para poder marcar presença manualmente.</p>}
           <RelatorioListaAlunosProfessor data={data} prof={prof} />
           {novoAluno && (
-            <PersonForm tipo="aluno" planos={data.planos.filter((p) => !p.professorId || p.professorId === prof.id)} faixas={data.faixas} professores={data.professores} unidadeFixa={(data.unidades || []).find((u) => u.id === prof.unidadeId) || null} turmas={data.turmas} initial={{ professorId: prof.id }} onCancel={() => setNovoAluno(false)} onSave={addAlunoProf} />
+            <PersonForm tipo="aluno" planos={planosDoProf(data, prof)} faixas={data.faixas} professores={data.professores} unidadeFixa={(data.unidades || []).find((u) => u.id === prof.unidadeId) || null} turmas={data.turmas} initial={{ professorId: prof.id }} onCancel={() => setNovoAluno(false)} onSave={addAlunoProf} />
           )}
           {editandoAluno && (
-            <PersonForm tipo="aluno" planos={data.planos.filter((p) => !p.professorId || p.professorId === prof.id)} faixas={data.faixas} professores={data.professores} unidadeFixa={(data.unidades || []).find((u) => u.id === prof.unidadeId) || null} turmas={data.turmas} initial={editandoAluno} onCancel={() => setEditandoAluno(null)} onSave={(form) => editarAlunoProf(editandoAluno.id, form)} />
+            <PersonForm tipo="aluno" planos={planosDoProf(data, prof)} faixas={data.faixas} professores={data.professores} {...unidadeEdicaoProf(data, prof)} turmas={data.turmas} initial={editandoAluno} onCancel={() => setEditandoAluno(null)} onSave={(form) => editarAlunoProf(editandoAluno.id, form)} />
           )}
           <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
             <input style={{ ...inputStyleDark, flex: 1, minWidth: 160 }} placeholder="Buscar por nome ou apelido..." value={buscaAluno} onChange={(e) => setBuscaAluno(e.target.value)} />
@@ -7041,8 +7079,7 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
             </select>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {data.alunos
-              .filter((a) => a.professorId === prof.id)
+            {alunosDoProf(data, prof)
               .filter((a) => !filtroFaixaAluno || a.faixaId === filtroFaixaAluno)
               .filter((a) => {
                 const termo = buscaAluno.trim().toLowerCase();
@@ -7077,6 +7114,7 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 600, fontSize: 14, color: "#F5F3EC" }}>{a.codigo && <span style={{ color: "#C9A227", fontWeight: 700 }}>{formatarCodigoAluno(a.codigo)} · </span>}{a.nome}{a.apelido && <span style={{ fontWeight: 400, color: "#9B9891" }}> "{a.apelido}"</span>}</div>
                       <BeltBar faixas={data.faixas} faixaId={a.faixaId} grau={a.grau} textColor="#F5F3EC" />
+                      {VE_TODOS_ALUNOS && <div style={{ fontSize: 11, color: "#9B9891" }}>Professor: {data.professores.find((p) => p.id === a.professorId)?.nome || "nenhum"}</div>}
                       {!aberto && (
                         <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
                           {!emDia && <Tag ok={false}>Pendente</Tag>}
@@ -7180,7 +7218,7 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
               );
             })}
             {(() => {
-              const meusAlunos = data.alunos.filter((a) => a.professorId === prof.id);
+              const meusAlunos = alunosDoProf(data, prof);
               const filtrados = meusAlunos
                 .filter((a) => !filtroFaixaAluno || a.faixaId === filtroFaixaAluno)
                 .filter((a) => {
@@ -7188,7 +7226,7 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
                   if (!termo) return true;
                   return a.nome.toLowerCase().includes(termo) || (a.apelido || "").toLowerCase().includes(termo);
                 });
-              if (meusAlunos.length === 0) return <Empty dark>Nenhum aluno vinculado a você ainda. Peça para a administração te vincular no cadastro do aluno.</Empty>;
+              if (meusAlunos.length === 0) return <Empty dark>{TXT_NENHUM_ALUNO_VINCULAR}</Empty>;
               if (filtrados.length === 0) return <Empty dark>Nenhum aluno encontrado com esse filtro.</Empty>;
               return null;
             })()}
@@ -7207,9 +7245,9 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
         {/* PÁGINA 4 — FINANCEIRO */}
         <div className="qg-sem-barra" style={{ flex: "0 0 100%", width: "100%", boxSizing: "border-box", scrollSnapAlign: "start", scrollSnapStop: "always", overflowY: "auto", touchAction: "pan-y", padding: "20px 20px 24px" }}>
           <div style={{ fontFamily: "Oswald", fontWeight: 700, fontSize: 20, color: "#fff", textTransform: "uppercase", marginBottom: 4 }}>💰 Financeiro</div>
-          <div style={{ fontSize: 12.5, color: "#9B9891", marginBottom: 16 }}>Só dos seus alunos vinculados</div>
+          <div style={{ fontSize: 12.5, color: "#9B9891", marginBottom: 16 }}>{VE_TODOS_ALUNOS ? "De todos os alunos da academia" : "Só dos seus alunos vinculados"}</div>
           <RelatorioMensalProfessor data={data} prof={prof} />
-          <PagamentosChart data={data} alunosFiltro={data.alunos.filter((a) => a.professorId === prof.id)} dark />
+          <PagamentosChart data={data} alunosFiltro={alunosDoProf(data, prof)} dark />
           <div style={{ marginTop: 20 }}>
             <PlanosProfessor data={data} save={save} prof={prof} dark />
           </div>
@@ -7219,7 +7257,7 @@ function ProfessorDashboard({ data, save, prof, onSair }) {
         <div className="qg-sem-barra" style={{ flex: "0 0 100%", width: "100%", boxSizing: "border-box", scrollSnapAlign: "start", scrollSnapStop: "always", overflowY: "auto", touchAction: "pan-y", padding: "20px 20px 24px" }}>
           <div style={{ fontFamily: "Oswald", fontWeight: 700, fontSize: 20, color: "#fff", textTransform: "uppercase", marginBottom: 4 }}>📑 Relatórios</div>
           <div style={{ fontSize: 12.5, color: "#9B9891", marginBottom: 16 }}>Todos os relatórios, em um só lugar</div>
-          <RelatoriosProfessor data={data} prof={prof} meusAlunos={data.alunos.filter((a) => a.professorId === prof.id)} />
+          <RelatoriosProfessor data={data} prof={prof} meusAlunos={alunosDoProf(data, prof)} />
         </div>
 
         {/* PÁGINA 6 — MAIS */}
@@ -7655,18 +7693,20 @@ function AlunoDashboard({ data, save, aluno, onSair }) {
   const [msgSenha, setMsgSenha] = useState("");
   const [recadosPendentes, setRecadosPendentes] = useState([]);
   const [fotosTreino, setFotosTreino] = useState([]);
+  // Com a opção ligada, o aluno recebe recados e fotos de todos os professores.
+  const filtroProfessor = VE_TODOS_ALUNOS ? "" : `professor_id=eq.${aluno.professorId}&`;
 
   useEffect(() => {
-    if (!aluno.professorId) return;
+    if (!aluno.professorId && !VE_TODOS_ALUNOS) return;
     let cancelado = false;
     (async () => {
       try {
-        const linhas = await pg.select("recados", `professor_id=eq.${aluno.professorId}&order=criado_em.desc`);
+        const linhas = await pg.select("recados", `${filtroProfessor}order=criado_em.desc`);
         const vistas = await pg.select("recados_visualizados", `aluno_id=eq.${aluno.id}`);
         const idsVistos = new Set((vistas || []).map((v) => v.recado_id));
         const naoVistos = (linhas || [])
           .filter((r) => !idsVistos.has(r.id))
-          .map((r) => ({ id: r.id, videoUrl: r.video_url, destinatariosTotal: r.destinatarios_total }));
+          .map((r) => ({ id: r.id, videoUrl: r.video_url, destinatariosTotal: r.destinatarios_total, professorId: r.professor_id }));
         if (!cancelado) setRecadosPendentes(naoVistos);
       } catch (_) {}
     })();
@@ -7674,19 +7714,19 @@ function AlunoDashboard({ data, save, aluno, onSair }) {
   }, [aluno.id, aluno.professorId]);
 
   useEffect(() => {
-    if (!aluno.professorId) return;
+    if (!aluno.professorId && !VE_TODOS_ALUNOS) return;
     let cancelado = false;
     (async () => {
       try {
         const limite = new Date(Date.now() - 5 * 86400000).toISOString();
-        const linhas = await pg.select("fotos_treino", `professor_id=eq.${aluno.professorId}&criado_em=gte.${limite}&order=criado_em.desc`);
-        if (!cancelado) setFotosTreino((linhas || []).map((f) => ({ id: f.id, fotoUrl: f.foto_url, criadoEm: f.criado_em })));
+        const linhas = await pg.select("fotos_treino", `${filtroProfessor}criado_em=gte.${limite}&order=criado_em.desc`);
+        if (!cancelado) setFotosTreino((linhas || []).map((f) => ({ id: f.id, fotoUrl: f.foto_url, criadoEm: f.criado_em, professorId: f.professor_id })));
       } catch (_) {}
     })();
     return () => { cancelado = true; };
   }, [aluno.id, aluno.professorId]);
 
-  const nomeProfessorRecado = data.professores.find((p) => p.id === aluno.professorId)?.nome;
+  const nomesProfessoresFotos = [...new Set(fotosTreino.map((f) => nomeProf(data, f.professorId)).filter(Boolean))].join(", ");
   const marcarRecadoVisto = (id) => setRecadosPendentes((prev) => prev.filter((r) => r.id !== id));
 
   useEffect(() => {
@@ -7699,7 +7739,7 @@ function AlunoDashboard({ data, save, aluno, onSair }) {
 
   useEffect(() => {
     if (!data.avisos || data.avisos.length === 0) return;
-    const avisosDoAluno = data.avisos.filter((a) => !a.professorId || a.professorId === aluno.professorId);
+    const avisosDoAluno = data.avisos.filter((a) => conteudoVisivel(a, aluno.professorId));
     const chaveVistos = `qg-avisos-vistos-${aluno.id}`;
     let vistos = [];
     try { vistos = JSON.parse(localStorage.getItem(chaveVistos) || "[]"); } catch (_) {}
@@ -7843,9 +7883,9 @@ function AlunoDashboard({ data, save, aluno, onSair }) {
         {/* PÁGINA 1 — PERFIL & CHECK-IN */}
         <div className="qg-sem-barra" style={{ flex: "0 0 100%", width: "100%", boxSizing: "border-box", scrollSnapAlign: "start", scrollSnapStop: "always", overflowY: "auto", touchAction: "pan-y", padding: "20px 20px 24px" }}>
           {recadosPendentes.length > 0 && (
-            <RecadoMestreAluno recado={recadosPendentes[0]} aluno={aluno} nomeProfessor={nomeProfessorRecado} onVisto={marcarRecadoVisto} />
+            <RecadoMestreAluno key={recadosPendentes[0].id} recado={recadosPendentes[0]} aluno={aluno} nomeProfessor={nomeProf(data, recadosPendentes[0].professorId)} onVisto={marcarRecadoVisto} />
           )}
-          <FotosTreinoAluno fotos={fotosTreino} nomeProfessor={nomeProfessorRecado} />
+          <FotosTreinoAluno fotos={fotosTreino} nomeProfessor={nomesProfessoresFotos} />
           {ehAniversarioHoje(aluno.dataNascimento) && <BannerAniversario nome={aluno.nome} mensagemPersonalizada={data.academia.mensagemAniversario} />}
           <div style={{ background: "linear-gradient(165deg, #1A1D24 0%, #0D0F13 100%)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: "18px 20px 20px", marginBottom: 12 }}>
             <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 4 }}>
@@ -7983,7 +8023,7 @@ function AlunoDashboard({ data, save, aluno, onSair }) {
             );
           })()}
           {(() => {
-            const avisosDoAluno = [...(data.avisos || [])].filter((a) => !a.professorId || a.professorId === aluno.professorId);
+            const avisosDoAluno = [...(data.avisos || [])].filter((a) => conteudoVisivel(a, aluno.professorId));
             if (avisosDoAluno.length === 0) return null;
             return (
               <Card style={{ marginBottom: 14, background: "#1A1D24", border: "1px solid rgba(255,255,255,0.06)" }}>
@@ -8011,9 +8051,9 @@ function AlunoDashboard({ data, save, aluno, onSair }) {
 
           <GradeHorarios turmas={turmasGeraisDaUnidade} />
 
-          <VideosAluno videos={(data.videos || []).filter((v) => (!v.professorId || v.professorId === aluno.professorId) && (!v.unidadeId || v.unidadeId === aluno.unidadeId))} />
+          <VideosAluno videos={(data.videos || []).filter((v) => conteudoVisivel(v, aluno.professorId) && (!v.unidadeId || v.unidadeId === aluno.unidadeId))} />
 
-          <ProdutosAluno produtos={(data.produtos || []).filter((p) => p.professorId === aluno.professorId && p.ativo !== false)} />
+          <ProdutosAluno produtos={(data.produtos || []).filter((p) => (VE_TODOS_ALUNOS || p.professorId === aluno.professorId) && p.ativo !== false)} />
 
           <SobreEquipeAluno texto={data.academia.sobreEquipe} nomeEquipe={data.academia.nome} />
 

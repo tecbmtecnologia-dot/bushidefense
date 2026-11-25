@@ -2,7 +2,8 @@
 // Envia notificações push de verdade (chegam mesmo com o app fechado) para todos os
 // alunos inscritos, usando as chaves VAPID configuradas como secrets do projeto.
 //
-// Deploy: veja o arquivo qg-push-deploy-instrucoes.md
+// Deploy: npx supabase functions deploy send-push --no-verify-jwt (sem essa opção o app para de
+// conseguir chamar a função, porque usa a chave publishable, que não é um JWT). Veja também o arquivo qg-push-deploy-instrucoes.md
 
 import webpush from "npm:web-push@3.6.7";
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
@@ -25,13 +26,16 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
   try {
-    const { titulo, mensagem, alunoId, professorId, professorAlunosId } = await req.json();
+    const { titulo, mensagem, alunoId, professorId, professorAlunosId, todosAlunos } = await req.json();
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
     let query = supabase.from("push_subscriptions").select("*");
     if (alunoId) {
       query = query.eq("aluno_id", alunoId);
     } else if (professorId) {
       query = query.eq("professor_id", professorId);
+    } else if (todosAlunos) {
+      // Publicação de professor que vai pra academia toda (Bushi): alunos, sem professores/admin.
+      query = query.not("aluno_id", "is", null);
     } else if (professorAlunosId) {
       const { data: alunosDoProfessor } = await supabase.from("alunos").select("id").eq("professor_id", professorAlunosId);
       const ids = (alunosDoProfessor || []).map((a) => a.id);

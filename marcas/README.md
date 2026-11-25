@@ -22,6 +22,8 @@ O mesmo código atende várias academias. Cada uma tem uma pasta aqui com:
 - `sede`: como o local principal é chamado (ex.: "QG" → "QG (padrão)", "Endereço do QG")
 - `senhaPadraoAluno`: senha inicial sugerida ao cadastrar aluno
 - `email`, `foro`: contato e foro da política de privacidade
+- `professoresVeemTodosAlunos`: (opcional) `true` = todo professor vê e altera todos os alunos, não só os vinculados a ele;
+  exige rodar `supabase/sql/2026-11-24_professores_veem_todos_alunos.sql` no banco da academia
 - `corTema`, `corFundo`: cor da barra do celular e fundo enquanto o app carrega
 
 ## Nova academia
