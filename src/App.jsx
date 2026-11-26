@@ -5470,21 +5470,28 @@ function PdfsProfessorPrincipal({ prof, admin, nomeEquipe }) {
 // historia_academia). A RLS em "professores" deixa o principal gravar
 // (2026-11-07_principal_cadastra_professores.sql, _edita_professores.sql e
 // _exclui_professores.sql). Sem a tabela no banco (ex: Cia Paulista) o card não aparece pra ninguém.
+// true quando `prof` é o professor principal (dono da linha em historia_academia). Sem a tabela
+// (Cia Paulista) a consulta falha e fica false.
+function useEhProfessorPrincipal(prof) {
+  const [ehPrincipal, setEhPrincipal] = useState(false);
+  useEffect(() => {
+    let ativo = true;
+    pg.select("historia_academia", "select=professor_id&id=eq.1")
+      .then((rows) => { if (ativo) setEhPrincipal(!!prof?.id && rows?.[0]?.professor_id === prof.id); })
+      .catch(() => {});
+    return () => { ativo = false; };
+  }, [prof?.id]);
+  return ehPrincipal;
+}
+
 function CadastroProfessoresPrincipal({ data, save, prof }) {
   const light = useDesktopLight();
-  const [ehPrincipal, setEhPrincipal] = useState(false);
+  const ehPrincipal = useEhProfessorPrincipal(prof);
   const [novo, setNovo] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [criado, setCriado] = useState(null);
   const [editando, setEditando] = useState(null);
   const [senhaGerada, setSenhaGerada] = useState(null);
-  useEffect(() => {
-    let ativo = true;
-    pg.select("historia_academia", "select=professor_id&id=eq.1")
-      .then((rows) => { if (ativo && prof?.id && rows?.[0]?.professor_id === prof.id) setEhPrincipal(true); })
-      .catch(() => {});
-    return () => { ativo = false; };
-  }, [prof?.id]);
   if (!ehPrincipal) return null;
   const muted = light ? LIGHT.muted : "#9B9891";
   const texto = light ? LIGHT.text : "#F5F3EC";
@@ -6238,6 +6245,7 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
   const light = useDesktopLight();
   const ghostEscuro = ghostEscuroFallback(light);
   const [tab, setTab] = useState("dashboard");
+  const ehPrincipal = useEhProfessorPrincipal(prof);
   const [erroRelatorioAlunos, setErroRelatorioAlunos] = useState("");
   const {
     sessaoAtiva, turmaId, setTurmaId, turma, checkinsSessao, iniciarAula, encerrarSessao,
@@ -6266,6 +6274,8 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
     { id: "metodologia", label: "Metodologia" },
     { id: "reuniao", label: "Reunião" },
     { id: "cronometro", label: "Cronômetro", externo: "/cronometro.html" },
+    // Só o professor principal (Bushi) vê: cadastro de professores.
+    ...(ehPrincipal ? [{ id: "professores", label: "Professores" }] : []),
     { id: "perfil", label: "Meu Perfil" },
   ];
 
@@ -6291,11 +6301,11 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
     });
 
   const iconesTabs = {
-    dashboard: "📊", inicio: "🏠", alunos: "🤼", checkins: "📍", turmas: "📅", financeiro: "💰", relatorios: "📑", avisos: "🔔", videos: "🎬", produtos: "🛍️", vendas: "💵", metodologia: "📋", reuniao: "🎥", cronometro: "⏱️", perfil: "👤",
+    dashboard: "📊", inicio: "🏠", alunos: "🤼", checkins: "📍", turmas: "📅", financeiro: "💰", relatorios: "📑", avisos: "🔔", videos: "🎬", produtos: "🛍️", vendas: "💵", metodologia: "📋", reuniao: "🎥", cronometro: "⏱️", professores: "👥", perfil: "👤",
   };
   const iconesTabsClaro = {
     dashboard: LayoutDashboard, inicio: Home, alunos: Users, checkins: QrCode, turmas: Calendar, financeiro: Wallet,
-    relatorios: FileText, avisos: Bell, videos: PlayCircle, produtos: ShoppingBag, vendas: Receipt, metodologia: ClipboardList, reuniao: Video, cronometro: Timer, perfil: User,
+    relatorios: FileText, avisos: Bell, videos: PlayCircle, produtos: ShoppingBag, vendas: Receipt, metodologia: ClipboardList, reuniao: Video, cronometro: Timer, professores: UserCog, perfil: User,
   };
 
   const [refFullBleed, estiloFullBleed] = useFullBleed();
@@ -6658,7 +6668,7 @@ function ProfessorDashboardDesktop({ data, save, prof, onSair, ctx }) {
       )}
 
       {tab === "perfil" && <PdfsProfessorPrincipal prof={prof} nomeEquipe={data.academia.nome} />}
-      {tab === "perfil" && <CadastroProfessoresPrincipal data={data} save={save} prof={prof} />}
+      {tab === "professores" && <CadastroProfessoresPrincipal data={data} save={save} prof={prof} />}
       </div>
       </div>
     </div>
